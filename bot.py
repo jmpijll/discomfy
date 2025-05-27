@@ -489,20 +489,18 @@ class PostGenerationView(discord.ui.View):
     """View with buttons for post-generation actions like upscaling and animation."""
     
     def __init__(self, bot: ComfyUIBot, original_image_data: bytes, generation_info: Dict[str, Any], user_id: int):
-        super().__init__(timeout=300)  # 5 minute timeout
+        super().__init__(timeout=None)  # No timeout - buttons work indefinitely
         self.bot = bot
         self.original_image_data = original_image_data
         self.generation_info = generation_info
-        self.user_id = user_id
+        self.original_user_id = user_id  # Keep track of original user for reference
     
     @discord.ui.button(label="🔍 Upscale", style=discord.ButtonStyle.secondary)
     async def upscale_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle upscale button click."""
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ You can only use buttons on your own generations!", ephemeral=True)
-            return
+        # Allow any user to use the buttons
         
-        # Check rate limiting
+        # Check rate limiting for the current user (not original user)
         if not self.bot._check_rate_limit(interaction.user.id):
             await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
             return
@@ -519,11 +517,9 @@ class PostGenerationView(discord.ui.View):
     @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
     async def animate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle animate button click."""
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ You can only use buttons on your own generations!", ephemeral=True)
-            return
+        # Allow any user to use the buttons
         
-        # Check rate limiting
+        # Check rate limiting for the current user (not original user)
         if not self.bot._check_rate_limit(interaction.user.id):
             await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
             return
@@ -536,12 +532,6 @@ class PostGenerationView(discord.ui.View):
         except Exception as e:
             self.bot.logger.error(f"Animation error: {e}")
             await interaction.followup.send("❌ Animation failed. Please try again.", ephemeral=True)
-    
-    async def on_timeout(self):
-        """Called when the view times out."""
-        # Disable all buttons
-        for item in self.children:
-            item.disabled = True
 
 # Help command
 @app_commands.command(name="help", description="Show help information about the bot")
@@ -586,7 +576,7 @@ async def help_command(interaction: discord.Interaction):
         value="After generating an image, use the action buttons:\n"
               "• **🔍 Upscale** - Enhance image resolution\n"
               "• **🎬 Animate** - Convert image to MP4 video\n"
-              "*(Buttons appear below generated images)*",
+              "*(Anyone can use these buttons on any generation)*",
         inline=False
     )
     
