@@ -166,6 +166,8 @@ def show_next_steps():
     print("      - Use the generated URL to invite your bot")
     
     print("\n   📚 For more help, check the README.md file!")
+    
+    return True
 
 def main():
     """Main setup function."""
