@@ -132,7 +132,7 @@ class VideoGenerator(ImageGenerator):
         length: int = 81,
         strength: float = 0.7,
         seed: Optional[int] = None,
-        input_image_path: Optional[str] = None,
+        input_image_data: Optional[bytes] = None,
         progress_callback=None
     ) -> Tuple[bytes, str, Dict[str, Any]]:
         """
@@ -149,7 +149,7 @@ class VideoGenerator(ImageGenerator):
             length: Video length in frames
             strength: Strength for image-to-video conversion
             seed: Random seed (auto-generated if None)
-            input_image_path: Path to input image for I2V
+            input_image_data: Image data as bytes for I2V
             progress_callback: Optional callback for progress updates
         
         Returns:
@@ -162,6 +162,12 @@ class VideoGenerator(ImageGenerator):
             
             if len(prompt) > self.config.security.max_prompt_length:
                 raise ValueError(f"Prompt too long (max {self.config.security.max_prompt_length} characters)")
+            
+            # Upload image to ComfyUI if provided
+            uploaded_filename = None
+            if input_image_data:
+                upload_filename = f"video_input_{int(__import__('time').time())}.png"
+                uploaded_filename = await self.upload_image(input_image_data, upload_filename)
             
             # Use default video workflow if none specified
             if not workflow_name:
@@ -179,7 +185,7 @@ class VideoGenerator(ImageGenerator):
             # Load and update workflow
             workflow = self._load_workflow(workflow_name)
             updated_workflow = self._update_video_workflow_parameters(
-                workflow, prompt, negative_prompt, width, height, steps, cfg, length, strength, seed, input_image_path
+                workflow, prompt, negative_prompt, width, height, steps, cfg, length, strength, seed, uploaded_filename
             )
             
             # Queue prompt
@@ -204,7 +210,7 @@ class VideoGenerator(ImageGenerator):
                 'length': length,
                 'strength': strength,
                 'seed': seed,
-                'input_image': input_image_path,
+                'input_image': uploaded_filename,
                 'filename': filename,
                 'timestamp': __import__('time').time(),
                 'type': 'video'
