@@ -40,7 +40,7 @@ class ComfyUIBot(commands.Bot):
             help_command=None
         )
         
-        # Initialize image generator
+        # Initialize shared image generator
         self.image_generator: Optional[ImageGenerator] = None
         
         # Rate limiting (simple in-memory storage)
@@ -154,9 +154,22 @@ class ComfyUIBot(commands.Bot):
         
         try:
             if interaction.response.is_done():
+                # Interaction already responded to, use followup
                 await interaction.followup.send(embed=embed, ephemeral=True)
             else:
+                # First response to interaction
                 await interaction.response.send_message(embed=embed, ephemeral=True)
+        except discord.NotFound:
+            # Interaction expired
+            self.logger.warning(f"Discord interaction expired when sending error to {interaction.user.id}")
+        except discord.HTTPException as e:
+            if e.code == 40060:  # Interaction already acknowledged
+                try:
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                except:
+                    self.logger.error(f"Failed to send error followup: {e}")
+            else:
+                self.logger.error(f"Failed to send error embed: {e}")
         except Exception as e:
             self.logger.error(f"Failed to send error embed: {e}")
     
@@ -170,13 +183,27 @@ class ComfyUIBot(commands.Bot):
         
         try:
             if interaction.response.is_done():
+                # Interaction already responded to, use followup
                 await interaction.followup.send(embed=embed)
             else:
+                # First response to interaction
                 await interaction.response.send_message(embed=embed)
+        except discord.NotFound:
+            # Interaction expired
+            self.logger.warning(f"Discord interaction expired when sending progress to {interaction.user.id}")
+        except discord.HTTPException as e:
+            if e.code == 40060:  # Interaction already acknowledged
+                try:
+                    await interaction.followup.send(embed=embed)
+                except:
+                    self.logger.error(f"Failed to send progress followup: {e}")
+            else:
+                self.logger.error(f"Failed to send progress embed: {e}")
         except Exception as e:
             self.logger.error(f"Failed to send progress embed: {e}")
 
 # Slash command for image generation
+@app_commands.command(name="generate", description="Generate images using ComfyUI")
 @app_commands.describe(
     prompt="The prompt for image generation",
     negative_prompt="Negative prompt (things to avoid)",
@@ -262,56 +289,59 @@ async def generate_command(
             return
         
         # Send initial response
-        embed = discord.Embed(
-            title="🎨 Generating Image",
-            description=f"**Prompt:** {prompt[:100]}{'...' if len(prompt) > 100 else ''}\n"
-                       f"**Size:** {width}x{height}\n"
-                       f"**Steps:** {steps} | **CFG:** {cfg}\n"
-                       f"**Batch:** {batch_size} image{'s' if batch_size > 1 else ''}",
-            color=discord.Color.blue()
+        await bot._send_progress_embed(
+            interaction,
+            "Generating Image",
+            f"🎨 Creating your image with prompt: `{prompt[:100]}{'...' if len(prompt) > 100 else ''}`\n"
+            f"📏 Size: {width}x{height} | 🔧 Steps: {steps} | ⚙️ CFG: {cfg}\n"
+            f"🖼️ Generating {batch_size} image{'s' if batch_size > 1 else ''}..."
         )
-        embed.set_footer(text="This may take a few moments...")
         
-        await interaction.response.send_message(embed=embed)
-        
-        # Progress callback
-        last_status = None
+        # Progress callback for updates
         async def progress_callback(status: str, queue_position: int = 0):
-            nonlocal last_status
-            if status != last_status:
-                status_text = f"Status: {status.title()}"
+            try:
                 if queue_position > 0:
-                    status_text += f" (Position in queue: {queue_position})"
+                    description = f"⏳ Queue position: {queue_position}\n📊 Status: {status}"
+                else:
+                    description = f"📊 Status: {status}"
                 
-                embed.description = f"**Prompt:** {prompt[:100]}{'...' if len(prompt) > 100 else ''}\n" \
-                                  f"**Size:** {width}x{height}\n" \
-                                  f"**Steps:** {steps} | **CFG:** {cfg}\n" \
-                                  f"**Batch:** {batch_size} image{'s' if batch_size > 1 else ''}\n\n" \
-                                  f"⏳ {status_text}"
+                embed = discord.Embed(
+                    title="⏳ Generating Image",
+                    description=description,
+                    color=discord.Color.blue()
+                )
                 
-                try:
+                # Use followup if interaction has already been responded to
+                if interaction.response.is_done():
+                    await interaction.followup.edit_message(interaction.id, embed=embed)
+                else:
                     await interaction.edit_original_response(embed=embed)
-                except:
-                    pass  # Ignore edit failures
-                
-                last_status = status
+            except discord.NotFound:
+                # Interaction expired, log but don't crash
+                bot.logger.warning(f"Discord interaction expired for user {interaction.user.id}")
+            except Exception as e:
+                bot.logger.warning(f"Failed to update progress: {e}")
         
         # Generate image
-        async with bot.image_generator as gen:
-            image_data, generation_info = await gen.generate_image(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=width,
-                height=height,
-                steps=steps,
-                cfg=cfg,
-                seed=seed,
-                batch_size=batch_size,
-                progress_callback=progress_callback
-            )
+        try:
+            async with bot.image_generator as gen:
+                image_data, generation_info = await gen.generate_image(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    steps=steps,
+                    cfg=cfg,
+                    batch_size=batch_size,
+                    seed=seed,
+                    progress_callback=progress_callback
+                )
+        except Exception as gen_error:
+            # If generation fails, we still need to handle the interaction
+            raise gen_error
         
         # Save image
-        filename = get_unique_filename("generated")
+        filename = get_unique_filename(f"discord_{interaction.user.id}")
         output_path = save_output_image(image_data, filename)
         
         # Create success embed
@@ -343,10 +373,34 @@ async def generate_command(
         # Send image
         file = discord.File(BytesIO(image_data), filename=filename)
         
-        await interaction.edit_original_response(
-            embed=success_embed,
-            attachments=[file]
-        )
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.edit_message(
+                    interaction.id,
+                    embed=success_embed,
+                    attachments=[file]
+                )
+            else:
+                await interaction.edit_original_response(
+                    embed=success_embed,
+                    attachments=[file]
+                )
+        except discord.NotFound:
+            # Interaction expired, send as followup
+            await interaction.followup.send(
+                embed=success_embed,
+                file=file
+            )
+        except Exception as e:
+            bot.logger.error(f"Failed to send success response: {e}")
+            # Try to send a simple followup message
+            try:
+                await interaction.followup.send(
+                    "✅ Image generated successfully! (Failed to send embed)",
+                    file=file
+                )
+            except:
+                bot.logger.error("Failed to send any response to user")
         
         bot.logger.info(f"Successfully generated image for {interaction.user} (ID: {interaction.user.id})")
         
@@ -355,23 +409,43 @@ async def generate_command(
         
     except ComfyUIAPIError as e:
         bot.logger.error(f"ComfyUI API error for user {interaction.user.id}: {e}")
-        await bot._send_error_embed(
-            interaction,
-            "Generation Failed",
-            f"ComfyUI error: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}"
-        )
+        try:
+            await bot._send_error_embed(
+                interaction,
+                "Generation Failed",
+                f"ComfyUI error: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}"
+            )
+        except:
+            # If we can't send error embed, try simple message
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send("❌ Generation failed. Please try again.")
+                else:
+                    await interaction.response.send_message("❌ Generation failed. Please try again.")
+            except:
+                bot.logger.error("Failed to send error response to user")
         
     except Exception as e:
         bot.logger.error(f"Unexpected error in generate command: {e}")
         bot.logger.error(traceback.format_exc())
-        await bot._send_error_embed(
-            interaction,
-            "Unexpected Error",
-            "An unexpected error occurred. Please try again later."
-        )
+        try:
+            await bot._send_error_embed(
+                interaction,
+                "Unexpected Error",
+                "An unexpected error occurred. Please try again later."
+            )
+        except:
+            # If we can't send error embed, try simple message
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send("❌ An unexpected error occurred. Please try again later.")
+                else:
+                    await interaction.response.send_message("❌ An unexpected error occurred. Please try again later.")
+            except:
+                bot.logger.error("Failed to send error response to user")
 
 # Help command
-@app_commands.describe()
+@app_commands.command(name="help", description="Show help information about the bot")
 async def help_command(interaction: discord.Interaction):
     """Show help information about the bot."""
     embed = discord.Embed(
@@ -421,7 +495,7 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # Status command
-@app_commands.describe()
+@app_commands.command(name="status", description="Check bot and ComfyUI status")
 async def status_command(interaction: discord.Interaction):
     """Check bot and ComfyUI status."""
     bot: ComfyUIBot = interaction.client
