@@ -1,0 +1,54 @@
+{
+  "discord": {
+    "token": "SET_VIA_ENVIRONMENT",
+    "guild_id": null,
+    "command_prefix": "!",
+    "max_file_size_mb": 25
+  },
+  "comfyui": {
+    "url": "http://localhost:8188",
+    "api_key": null,
+    "timeout": 300,
+    "max_retries": 3,
+    "retry_delay": 1.0
+  },
+  "generation": {
+    "default_workflow": "hidream_full_config-1",
+    "max_batch_size": 4,
+    "output_limit": 50,
+    "default_width": 1024,
+    "default_height": 1024,
+    "default_steps": 50,
+    "default_cfg": 5.0
+  },
+  "workflows": {
+    "hidream_full_config-1": {
+      "file": "hidream_full_config-1.json",
+      "name": "HiDream Full Config",
+      "description": "High-quality image generation workflow",
+      "parameters": {
+        "prompt_node": "6",
+        "negative_prompt_node": "7",
+        "width_node": "5",
+        "height_node": "5",
+        "steps_node": "3",
+        "cfg_node": "3",
+        "seed_node": "3"
+      },
+      "enabled": true
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_path": "logs/bot.log",
+    "max_file_size_mb": 10,
+    "backup_count": 5
+  },
+  "security": {
+    "rate_limit_per_user": 10,
+    "rate_limit_global": 100,
+    "allowed_file_types": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
+    "max_prompt_length": 1000
+  }
+} 
