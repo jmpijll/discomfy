@@ -8,24 +8,32 @@ Welcome to the most powerful Discord bot for AI image and video generation! This
 
 This isn't just another AI bot - it's a complete creative powerhouse that brings the full capabilities of ComfyUI to Discord with an intuitive, user-friendly interface. Generate everything from simple images to complex video animations, all while chatting with your friends!
 
+## 🔧 Development Status
+
+- ✅ **Phase 1**: Foundation & Basic Image Generation (Complete)
+- ✅ **Phase 2**: Post-Generation Actions & UI (Complete)
+- ✅ **Phase 3**: Video Generation & Advanced Features (Complete)
+- 🚧 **Phase 4**: Polish & Production Ready (In Progress)
+
 ## ✨ Features
 
-### ✅ Current Features (Phase 1 & 2 Complete)
+### ✅ Current Features (Phase 1, 2 & 3 Complete)
 - **🎨 AI Image Generation**: Generate high-quality images using ComfyUI workflows
 - **⚡ Slash Commands**: Simple `/generate` command with customizable parameters
-- **🔍 Post-Generation Actions**: Universal upscale and animate buttons on every image
+- **🔍 Functional Upscaling**: 2x image upscaling with ComfyUI upscale workflow
+- **🎬 Video Generation**: Convert images to 720x720 MP4 animations (81 frames)
 - **👥 Community Friendly**: Anyone can use action buttons on any generation
 - **⏰ Infinite Usage**: Buttons never expire and can be used multiple times
 - **🛡️ Rate Limiting**: Smart rate limiting to prevent abuse (5 requests/minute per user)
-- **📊 Real-time Progress**: Live progress updates during generation
+- **📊 Real-time Progress**: Live progress updates during generation and processing
 - **🔧 Configurable Parameters**: Width, height, steps, CFG, batch size, seed control
 - **📁 Auto-cleanup**: Automatic management of output files (100 file limit)
 
-### 🚧 Coming Soon (Phase 3)
-- **🔍 Actual Upscaling**: Connect upscale buttons to ComfyUI upscale workflows
-- **🎬 Video Generation**: Convert images to MP4 animations
+### 🚧 Coming Soon (Phase 4)
 - **🎯 LoRA Support**: Advanced model customization
 - **💾 Preset System**: Save and load generation presets
+- **⚡ Performance Optimization**: Enhanced speed and reliability
+- **📊 Advanced Analytics**: Generation statistics and insights
 
 ## 🚀 Installation & Setup
 
@@ -222,6 +230,12 @@ After generation, use the buttons to:
 - Check output folder cleanup is working
 - Monitor system memory usage
 - Restart bot periodically
+
+**Buttons not working**
+- Check the logs in `logs/bot.log` for any errors
+- Verify ComfyUI server is running and accessible
+- Ensure upscale and video workflows are properly configured
+- Check that required models are loaded in ComfyUI
 
 ## 📁 Project Structure
 ```
