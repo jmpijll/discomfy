@@ -301,24 +301,25 @@ async def generate_command(
         async def progress_callback(status: str, queue_position: int = 0):
             try:
                 if queue_position > 0:
-                    description = f"⏳ Queue position: {queue_position}\n📊 Status: {status}"
+                    description = f"⏳ Queue position: {queue_position}\n📊 Status: {status.title()}"
                 else:
-                    description = f"📊 Status: {status}"
+                    description = f"📊 Status: {status.title()}"
                 
                 embed = discord.Embed(
                     title="⏳ Generating Image",
-                    description=description,
+                    description=f"🎨 Prompt: `{prompt[:80]}{'...' if len(prompt) > 80 else ''}`\n\n{description}",
                     color=discord.Color.blue()
                 )
                 
-                # Use followup if interaction has already been responded to
-                if interaction.response.is_done():
-                    await interaction.followup.edit_message(interaction.id, embed=embed)
-                else:
-                    await interaction.edit_original_response(embed=embed)
+                # Always use edit_original_response since we already responded
+                await interaction.edit_original_response(embed=embed)
+                
             except discord.NotFound:
                 # Interaction expired, log but don't crash
                 bot.logger.warning(f"Discord interaction expired for user {interaction.user.id}")
+            except discord.HTTPException as e:
+                # Log HTTP errors but don't crash
+                bot.logger.warning(f"Failed to update progress for user {interaction.user.id}: {e}")
             except Exception as e:
                 bot.logger.warning(f"Failed to update progress: {e}")
         
@@ -370,39 +371,53 @@ async def generate_command(
         
         success_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
         
-        # Send image
+        # Send image - try multiple approaches
         file = discord.File(BytesIO(image_data), filename=filename)
         
         try:
-            if interaction.response.is_done():
-                await interaction.followup.edit_message(
-                    interaction.id,
-                    embed=success_embed,
-                    attachments=[file]
-                )
-            else:
-                await interaction.edit_original_response(
-                    embed=success_embed,
-                    attachments=[file]
-                )
-        except discord.NotFound:
-            # Interaction expired, send as followup
-            await interaction.followup.send(
+            # Try to edit the original response with the image
+            await interaction.edit_original_response(
                 embed=success_embed,
-                file=file
+                attachments=[file]
             )
-        except Exception as e:
-            bot.logger.error(f"Failed to send success response: {e}")
-            # Try to send a simple followup message
+            bot.logger.info(f"Successfully sent image via edit_original_response for {interaction.user}")
+            
+        except discord.NotFound:
+            # Interaction expired, send as new followup message
             try:
                 await interaction.followup.send(
-                    "✅ Image generated successfully! (Failed to send embed)",
-                    file=file
+                    embed=success_embed,
+                    file=discord.File(BytesIO(image_data), filename=filename)  # Create new file object
                 )
-            except:
-                bot.logger.error("Failed to send any response to user")
+                bot.logger.info(f"Successfully sent image via followup for {interaction.user}")
+            except Exception as followup_error:
+                bot.logger.error(f"Failed to send followup image: {followup_error}")
+                
+        except discord.HTTPException as e:
+            bot.logger.error(f"HTTP error sending image: {e}")
+            # Try sending as followup
+            try:
+                await interaction.followup.send(
+                    embed=success_embed,
+                    file=discord.File(BytesIO(image_data), filename=filename)  # Create new file object
+                )
+                bot.logger.info(f"Successfully sent image via followup after HTTP error for {interaction.user}")
+            except Exception as followup_error:
+                bot.logger.error(f"Failed to send followup image after HTTP error: {followup_error}")
+                
+        except Exception as e:
+            bot.logger.error(f"Unexpected error sending image: {e}")
+            # Last resort: try simple followup
+            try:
+                await interaction.followup.send(
+                    "✅ Image generated successfully! (Failed to send with embed)",
+                    file=discord.File(BytesIO(image_data), filename=filename)  # Create new file object
+                )
+                bot.logger.info(f"Successfully sent image via simple followup for {interaction.user}")
+            except Exception as final_error:
+                bot.logger.error(f"Complete failure to send image: {final_error}")
         
-        bot.logger.info(f"Successfully generated image for {interaction.user} (ID: {interaction.user.id})")
+        bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id})")
         
         # Clean up old outputs
         cleanup_old_outputs(bot.config.generation.output_limit)
