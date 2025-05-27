@@ -31,18 +31,24 @@ class ImageGenerator:
         self.logger = logging.getLogger(__name__)
         self.base_url = self.config.comfyui.url.rstrip('/')
         self.session: Optional[aiohttp.ClientSession] = None
+        self._session_lock = asyncio.Lock()
         
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=self.config.comfyui.timeout)
-        )
+        async with self._session_lock:
+            if self.session is None or self.session.closed:
+                self.session = aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=self.config.comfyui.timeout),
+                    connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+                )
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        if self.session:
-            await self.session.close()
+        async with self._session_lock:
+            if self.session and not self.session.closed:
+                await self.session.close()
+                self.session = None
     
     async def test_connection(self) -> bool:
         """Test connection to ComfyUI server."""
