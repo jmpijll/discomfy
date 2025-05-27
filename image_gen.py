@@ -472,7 +472,7 @@ class ImageGenerator:
     
     async def generate_upscale(
         self,
-        input_image_path: str,
+        input_image_data: bytes,
         prompt: str = "",
         negative_prompt: str = "",
         upscale_factor: float = 2.0,
@@ -486,7 +486,7 @@ class ImageGenerator:
         Upscale an image using ComfyUI upscale workflow.
         
         Args:
-            input_image_path: Path to the input image file
+            input_image_data: Image data as bytes
             prompt: Positive prompt for upscaling
             negative_prompt: Negative prompt for upscaling
             upscale_factor: Upscaling factor (default: 2.0)
@@ -501,18 +501,22 @@ class ImageGenerator:
         """
         try:
             # Validate inputs
-            if not input_image_path:
-                raise ValueError("Input image path cannot be empty")
+            if not input_image_data:
+                raise ValueError("Input image data cannot be empty")
+            
+            # Upload image to ComfyUI
+            upload_filename = f"upscale_input_{int(time.time())}.png"
+            uploaded_filename = await self.upload_image(input_image_data, upload_filename)
             
             # Use upscale workflow
             workflow_name = "upscale_config-1"
             
-            self.logger.info(f"Starting image upscaling: {input_image_path} (factor: {upscale_factor}x)")
+            self.logger.info(f"Starting image upscaling: {uploaded_filename} (factor: {upscale_factor}x)")
             
             # Load and update workflow
             workflow = self._load_workflow(workflow_name)
             updated_workflow = self._update_upscale_workflow_parameters(
-                workflow, input_image_path, prompt, negative_prompt, upscale_factor, denoise, steps, cfg, seed
+                workflow, uploaded_filename, prompt, negative_prompt, upscale_factor, denoise, steps, cfg, seed
             )
             
             # Queue prompt
@@ -522,12 +526,13 @@ class ImageGenerator:
             history = await self._wait_for_completion(prompt_id, progress_callback)
             
             # Download upscaled image
-            image_data = await self._download_images(history)
+            images = await self._download_images(history)
+            upscaled_image_data = images[0] if images else b''
             
             # Prepare upscale info
             upscale_info = {
                 'prompt_id': prompt_id,
-                'input_image': input_image_path,
+                'input_image': uploaded_filename,
                 'prompt': prompt,
                 'negative_prompt': negative_prompt,
                 'upscale_factor': upscale_factor,
@@ -536,12 +541,12 @@ class ImageGenerator:
                 'cfg': cfg,
                 'seed': seed,
                 'workflow': workflow_name,
-                'timestamp': __import__('time').time(),
+                'timestamp': time.time(),
                 'type': 'upscale'
             }
             
             self.logger.info(f"Image upscaling completed successfully")
-            return image_data, upscale_info
+            return upscaled_image_data, upscale_info
             
         except Exception as e:
             self.logger.error(f"Image upscaling failed: {e}")
@@ -602,6 +607,34 @@ class ImageGenerator:
         except Exception as e:
             self.logger.error(f"Failed to update upscale workflow parameters: {e}")
             raise ComfyUIAPIError(f"Failed to update upscale workflow parameters: {e}")
+    
+    async def upload_image(self, image_data: bytes, filename: str) -> str:
+        """Upload image data to ComfyUI input directory."""
+        try:
+            if not self.session:
+                raise RuntimeError("Session not initialized")
+            
+            # Create form data for file upload
+            data = aiohttp.FormData()
+            data.add_field('image', 
+                          image_data, 
+                          filename=filename, 
+                          content_type='image/png')
+            
+            # Upload to ComfyUI
+            async with self.session.post(f"{self.base_url}/upload/image", data=data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    uploaded_filename = result.get('name', filename)
+                    self.logger.info(f"Successfully uploaded image: {uploaded_filename}")
+                    return uploaded_filename
+                else:
+                    error_text = await response.text()
+                    raise ComfyUIAPIError(f"Failed to upload image: {response.status} - {error_text}")
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to upload image: {e}")
+            raise ComfyUIAPIError(f"Failed to upload image: {e}")
 
 # Utility functions for file management
 def save_output_image(image_data: bytes, filename: str) -> Path:
