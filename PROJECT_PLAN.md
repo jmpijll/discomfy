@@ -3,86 +3,91 @@
 ## Overview
 A Discord bot that integrates with ComfyUI API to generate images and videos through slash commands, with modular architecture and extensive customization options.
 
-## Phase 1: Foundation & Basic Image Generation (Week 1)
+**🎉 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)
+
+## ✅ Phase 1: Foundation & Basic Image Generation (COMPLETED)
 **Goal**: Create a working Discord bot that can generate basic images using ComfyUI API
 
 ### Steps:
-1. **Project Setup**
+1. **Project Setup** ✅
    - Create virtual environment and requirements.txt
    - Set up basic project structure
    - Create configuration system
 
-2. **Core Components**
+2. **Core Components** ✅
    - Implement basic bot.py with Discord connection
    - Create image_gen.py with ComfyUI API integration
    - Implement workflow JSON loading system
    - Create basic output management (save/cleanup)
 
-3. **Basic Image Generation**
+3. **Basic Image Generation** ✅
    - Implement simple slash command for image generation
    - Support prompt input and basic parameters
    - Return generated image to Discord
 
 ### Testing Criteria:
-- [ ] Bot connects to Discord successfully
-- [ ] Bot responds to `/generate` command
-- [ ] ComfyUI API integration works
-- [ ] Generated images are saved and displayed in Discord
-- [ ] Output folder management works (50 file limit)
+- [x] Bot connects to Discord successfully
+- [x] Bot responds to `/generate` command
+- [x] ComfyUI API integration works
+- [x] Generated images are saved and displayed in Discord
+- [x] Output folder management works (100 file limit)
 
-## Phase 2: Enhanced Image Features & UI (Week 2)
-**Goal**: Add advanced image generation features and interactive UI elements
+## ✅ Phase 2: Enhanced Features & Post-Generation Actions (COMPLETED)
+**Goal**: Add post-generation action buttons and streamlined user experience
 
 ### Steps:
-1. **Parameter Customization**
-   - Implement configurable parameters (width, height, steps, cfg, etc.)
-   - Add batch generation support
-   - Create image collage functionality for multiple outputs
+1. **Streamlined Generation** ✅
+   - Simplified `/generate` command (image-only)
+   - Removed workflow parameter for cleaner UX
+   - Enhanced parameter validation and error handling
 
-2. **Interactive UI**
-   - Add Discord buttons for post-generation actions
-   - Implement upscaling functionality
-   - Add variation generation options
+2. **Post-Generation Actions** ✅
+   - Added Discord UI buttons for upscaling and animation
+   - Universal button access (anyone can use any generation's buttons)
+   - Infinite button usage (no timeout)
+   - Rate limiting per user for button interactions
 
-3. **Workflow Management**
-   - Support multiple workflow JSON files
-   - Allow users to select different workflows
-   - Implement workflow validation
+3. **User Experience** ✅
+   - Updated help system with clear documentation
+   - Improved error handling and user feedback
+   - Enhanced progress indicators during generation
 
 ### Testing Criteria:
-- [ ] Users can adjust generation parameters
-- [ ] Batch generation creates collages correctly
-- [ ] Interactive buttons work (upscale, variations)
-- [ ] Multiple workflows can be selected and used
-- [ ] Parameter validation prevents errors
+- [x] Users can adjust generation parameters
+- [x] Post-generation buttons appear on all images
+- [x] Anyone can use buttons on any generation
+- [x] Buttons work indefinitely without timeout
+- [x] Rate limiting prevents abuse
+- [x] Help system is comprehensive and accurate
 
-## Phase 3: Video Generation & Advanced Features (Week 3)
-**Goal**: Add video generation capabilities and advanced features
+## 🚧 Phase 3: Video Generation & Advanced Features (IN PROGRESS)
+**Goal**: Implement actual upscaling and video generation functionality
 
 ### Steps:
-1. **Video Generation**
-   - Implement video_gen.py component
-   - Add video workflow support
-   - Create image-to-video functionality
-   - Handle video file uploads to Discord
+1. **Upscaling Implementation**
+   - Connect upscale button to ComfyUI upscale workflow
+   - Handle high-resolution image outputs
+   - Add upscaling parameter options
 
-2. **Advanced Features**
-   - Implement image-to-video conversion from generated images
+2. **Video Generation Implementation**
+   - Connect animate button to ComfyUI video workflow
+   - Implement image-to-video conversion
+   - Handle MP4 file uploads to Discord
+   - Add video generation parameters
+
+3. **Advanced Features**
    - Add LoRA selection and management
    - Create preset saving/loading system
-   - Add queue management for long operations
-
-3. **User Experience**
-   - Add progress indicators for long operations
-   - Implement error handling and user feedback
-   - Create help system and command documentation
+   - Implement queue management for long operations
+   - Enhanced progress tracking for video generation
 
 ### Testing Criteria:
-- [ ] Video generation works end-to-end
-- [ ] Image-to-video conversion functions correctly
+- [ ] Upscale button generates higher resolution images
+- [ ] Animate button creates MP4 videos from images
+- [ ] Video files are properly uploaded to Discord
 - [ ] LoRA integration works
 - [ ] Queue system handles multiple requests
-- [ ] Error messages are helpful and clear
+- [ ] Progress indicators work for long operations
 
 ## Phase 4: Polish & Production Ready (Week 4)
 **Goal**: Finalize the bot for production use with comprehensive features

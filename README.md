@@ -2,56 +2,30 @@
 
 Welcome to the most powerful Discord bot for AI image and video generation! This bot seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Whether you're an artist, content creator, or just love experimenting with AI, this bot makes it incredibly easy to create stunning visuals with just a few commands!
 
+**🎉 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)
+
 ## 🌟 What Makes This Bot Special?
 
 This isn't just another AI bot - it's a complete creative powerhouse that brings the full capabilities of ComfyUI to Discord with an intuitive, user-friendly interface. Generate everything from simple images to complex video animations, all while chatting with your friends!
 
-## ✨ Current Features
+## ✨ Features
 
-### 🖼️ Image Generation
-- **Slash Commands**: Easy-to-use `/generate` command with autocomplete
-- **Custom Prompts**: Write any prompt and watch your imagination come to life
-- **Parameter Control**: Adjust width, height, steps, CFG scale, and more
-- **Batch Generation**: Create multiple images at once with automatic collaging
-- **Interactive UI**: Post-generation buttons for upscaling, variations, and more
-- **Multiple Workflows**: Switch between different ComfyUI workflows on the fly
-- **Smart Output Management**: Automatically saves and manages your creations
+### ✅ Current Features (Phase 1 & 2 Complete)
+- **🎨 AI Image Generation**: Generate high-quality images using ComfyUI workflows
+- **⚡ Slash Commands**: Simple `/generate` command with customizable parameters
+- **🔍 Post-Generation Actions**: Universal upscale and animate buttons on every image
+- **👥 Community Friendly**: Anyone can use action buttons on any generation
+- **⏰ Infinite Usage**: Buttons never expire and can be used multiple times
+- **🛡️ Rate Limiting**: Smart rate limiting to prevent abuse (5 requests/minute per user)
+- **📊 Real-time Progress**: Live progress updates during generation
+- **🔧 Configurable Parameters**: Width, height, steps, CFG, batch size, seed control
+- **📁 Auto-cleanup**: Automatic management of output files (100 file limit)
 
-### 🎬 Video Generation (Coming Soon!)
-- **Image-to-Video**: Transform your generated images into stunning animations
-- **Custom Video Workflows**: Support for complex video generation pipelines
-- **Video Parameters**: Control frame rate, duration, and animation style
-- **Progress Tracking**: Real-time updates on video generation progress
-
-### 🔧 Advanced Features
-- **Modular Architecture**: Clean, extensible codebase for easy customization
-- **Workflow Management**: Easy addition of new ComfyUI workflows
-- **Error Handling**: Graceful error recovery with helpful user feedback
-- **Rate Limiting**: Fair usage policies to ensure smooth operation
-- **File Management**: Automatic cleanup and organization of generated content
-
-## 🗺️ Roadmap - What's Coming Next!
-
-### Phase 2: Enhanced Image Features (In Development)
-- [ ] Advanced parameter customization
-- [ ] LoRA model selection and management
-- [ ] Preset saving and sharing
-- [ ] Image upscaling and enhancement tools
-- [ ] Style transfer capabilities
-
-### Phase 3: Video Generation (Coming Soon)
-- [ ] Full video generation pipeline
-- [ ] Image-to-video conversion
-- [ ] Video style transfer
-- [ ] Animation controls and keyframing
-- [ ] Video collaging and editing
-
-### Phase 4: Community Features (Future)
-- [ ] User galleries and sharing
-- [ ] Collaborative generation sessions
-- [ ] Custom workflow sharing
-- [ ] Advanced user permissions
-- [ ] Generation analytics and insights
+### 🚧 Coming Soon (Phase 3)
+- **🔍 Actual Upscaling**: Connect upscale buttons to ComfyUI upscale workflows
+- **🎬 Video Generation**: Convert images to MP4 animations
+- **🎯 LoRA Support**: Advanced model customization
+- **💾 Preset System**: Save and load generation presets
 
 ## 🚀 Installation & Setup
 
@@ -63,8 +37,8 @@ This isn't just another AI bot - it's a complete creative powerhouse that brings
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/yourusername/discord-comfyui-bot.git
-cd discord-comfyui-bot
+git clone https://github.com/jmpijll/discomfy.git
+cd discomfy
 ```
 
 ### Step 2: Set Up Virtual Environment
@@ -251,7 +225,7 @@ After generation, use the buttons to:
 
 ## 📁 Project Structure
 ```
-discord-comfyui-bot/
+discomfy/
 ├── bot.py                 # Main Discord bot logic
 ├── image_gen.py          # Image generation handler
 ├── video_gen.py          # Video generation handler (coming soon)
