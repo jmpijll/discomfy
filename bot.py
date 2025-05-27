@@ -213,7 +213,6 @@ class ComfyUIBot(commands.Bot):
 @app_commands.command(name="generate", description="Generate images using ComfyUI")
 @app_commands.describe(
     prompt="The prompt for image generation",
-    workflow="Workflow to use (default: auto-detect)",
     negative_prompt="Negative prompt (things to avoid)",
     width="Image width (default: 1024)",
     height="Image height (default: 1024)",
@@ -225,7 +224,6 @@ class ComfyUIBot(commands.Bot):
 async def generate_command(
     interaction: discord.Interaction,
     prompt: str,
-    workflow: str = "",
     negative_prompt: str = "",
     width: int = 1024,
     height: int = 1024,
@@ -297,38 +295,16 @@ async def generate_command(
             )
             return
         
-        # Determine workflow and generator type
-        selected_workflow = workflow.strip() if workflow else ""
-        workflow_config = None
-        generator_type = "image"  # default
-        
-        if selected_workflow:
-            # User specified a workflow
-            if selected_workflow in bot.config.workflows:
-                workflow_config = bot.config.workflows[selected_workflow]
-                generator_type = workflow_config.type
-            else:
-                await bot._send_error_embed(
-                    interaction,
-                    "Invalid Workflow",
-                    f"Workflow '{selected_workflow}' not found. Use `/workflows` to see available options."
-                )
-                return
-        else:
-            # Auto-detect: use default image workflow
-            selected_workflow = bot.config.generation.default_workflow
-            if selected_workflow in bot.config.workflows:
-                workflow_config = bot.config.workflows[selected_workflow]
-                generator_type = workflow_config.type
+        # Use default image workflow
+        selected_workflow = bot.config.generation.default_workflow
         
         # Send initial response
         await bot._send_progress_embed(
             interaction,
-            "Generating Content",
-            f"🎨 Creating your {generator_type} with prompt: `{prompt[:100]}{'...' if len(prompt) > 100 else ''}`\n"
+            "Generating Image",
+            f"🎨 Creating your image with prompt: `{prompt[:100]}{'...' if len(prompt) > 100 else ''}`\n"
             f"📏 Size: {width}x{height} | 🔧 Steps: {steps} | ⚙️ CFG: {cfg}\n"
-            f"🖼️ Workflow: {workflow_config.name if workflow_config else selected_workflow}\n"
-            f"🔄 Generating {batch_size} {generator_type}{'s' if batch_size > 1 else ''}..."
+            f"🔄 Generating {batch_size} image{'s' if batch_size > 1 else ''}..."
         )
         
         # Progress callback for updates
@@ -340,7 +316,7 @@ async def generate_command(
                     description = f"📊 Status: {status.title()}"
                 
                 embed = discord.Embed(
-                    title=f"⏳ Generating {generator_type.title()}",
+                    title="⏳ Generating Image",
                     description=f"🎨 Prompt: `{prompt[:80]}{'...' if len(prompt) > 80 else ''}`\n\n{description}",
                     color=discord.Color.blue()
                 )
@@ -357,47 +333,26 @@ async def generate_command(
             except Exception as e:
                 bot.logger.warning(f"Failed to update progress: {e}")
         
-        # Generate content based on type
+        # Generate image
         try:
-            if generator_type == "video":
-                # Video generation
-                async with bot.video_generator as gen:
-                    video_data, filename, generation_info = await gen.generate_video(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        workflow_name=selected_workflow,
-                        width=width,
-                        height=height,
-                        steps=steps,
-                        cfg=cfg,
-                        seed=seed,
-                        progress_callback=progress_callback
-                    )
-                
-                # Save video
-                output_path = save_output_video(video_data, filename)
-                file_data = video_data
-                
-            else:
-                # Image generation (default)
-                async with bot.image_generator as gen:
-                    image_data, generation_info = await gen.generate_image(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        workflow_name=selected_workflow,
-                        width=width,
-                        height=height,
-                        steps=steps,
-                        cfg=cfg,
-                        batch_size=batch_size,
-                        seed=seed,
-                        progress_callback=progress_callback
-                    )
-                
-                # Save image
-                filename = get_unique_filename(f"discord_{interaction.user.id}")
-                output_path = save_output_image(image_data, filename)
-                file_data = image_data
+            async with bot.image_generator as gen:
+                image_data, generation_info = await gen.generate_image(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    workflow_name=selected_workflow,
+                    width=width,
+                    height=height,
+                    steps=steps,
+                    cfg=cfg,
+                    batch_size=batch_size,
+                    seed=seed,
+                    progress_callback=progress_callback
+                )
+            
+            # Save image
+            filename = get_unique_filename(f"discord_{interaction.user.id}")
+            output_path = save_output_image(image_data, filename)
+            file_data = image_data
                 
         except Exception as gen_error:
             # If generation fails, we still need to handle the interaction
@@ -429,6 +384,14 @@ async def generate_command(
         
         success_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
         
+        # Create action buttons view
+        view = PostGenerationView(
+            bot=bot,
+            original_image_data=file_data,
+            generation_info=generation_info,
+            user_id=interaction.user.id
+        )
+        
         # Send content - try multiple approaches
         file = discord.File(BytesIO(file_data), filename=filename)
         
@@ -436,46 +399,50 @@ async def generate_command(
             # Try to edit the original response with the file
             await interaction.edit_original_response(
                 embed=success_embed,
-                attachments=[file]
+                attachments=[file],
+                view=view
             )
-            bot.logger.info(f"Successfully sent {generator_type} via edit_original_response for {interaction.user}")
+            bot.logger.info(f"Successfully sent image via edit_original_response for {interaction.user}")
             
         except discord.NotFound:
             # Interaction expired, send as new followup message
             try:
                 await interaction.followup.send(
                     embed=success_embed,
-                    file=discord.File(BytesIO(file_data), filename=filename)  # Create new file object
+                    file=discord.File(BytesIO(file_data), filename=filename),  # Create new file object
+                    view=view
                 )
-                bot.logger.info(f"Successfully sent {generator_type} via followup for {interaction.user}")
+                bot.logger.info(f"Successfully sent image via followup for {interaction.user}")
             except Exception as followup_error:
-                bot.logger.error(f"Failed to send followup {generator_type}: {followup_error}")
+                bot.logger.error(f"Failed to send followup image: {followup_error}")
                 
         except discord.HTTPException as e:
-            bot.logger.error(f"HTTP error sending {generator_type}: {e}")
+            bot.logger.error(f"HTTP error sending image: {e}")
             # Try sending as followup
             try:
                 await interaction.followup.send(
                     embed=success_embed,
-                    file=discord.File(BytesIO(file_data), filename=filename)  # Create new file object
+                    file=discord.File(BytesIO(file_data), filename=filename),  # Create new file object
+                    view=view
                 )
-                bot.logger.info(f"Successfully sent {generator_type} via followup after HTTP error for {interaction.user}")
+                bot.logger.info(f"Successfully sent image via followup after HTTP error for {interaction.user}")
             except Exception as followup_error:
-                bot.logger.error(f"Failed to send followup {generator_type} after HTTP error: {followup_error}")
+                bot.logger.error(f"Failed to send followup image after HTTP error: {followup_error}")
                 
         except Exception as e:
-            bot.logger.error(f"Unexpected error sending {generator_type}: {e}")
+            bot.logger.error(f"Unexpected error sending image: {e}")
             # Last resort: try simple followup
             try:
                 await interaction.followup.send(
-                    f"✅ {generator_type.title()} generated successfully! (Failed to send with embed)",
-                    file=discord.File(BytesIO(file_data), filename=filename)  # Create new file object
+                    f"✅ Image generated successfully! (Failed to send with embed)",
+                    file=discord.File(BytesIO(file_data), filename=filename),  # Create new file object
+                    view=view
                 )
-                bot.logger.info(f"Successfully sent {generator_type} via simple followup for {interaction.user}")
+                bot.logger.info(f"Successfully sent image via simple followup for {interaction.user}")
             except Exception as final_error:
-                bot.logger.error(f"Complete failure to send {generator_type}: {final_error}")
+                bot.logger.error(f"Complete failure to send image: {final_error}")
         
-        bot.logger.info(f"{generator_type.title()} generation process completed for {interaction.user} (ID: {interaction.user.id})")
+        bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id})")
         
         # Clean up old outputs
         cleanup_old_outputs(bot.config.generation.output_limit)
@@ -517,6 +484,65 @@ async def generate_command(
             except:
                 bot.logger.error("Failed to send error response to user")
 
+# Post-generation action buttons view
+class PostGenerationView(discord.ui.View):
+    """View with buttons for post-generation actions like upscaling and animation."""
+    
+    def __init__(self, bot: ComfyUIBot, original_image_data: bytes, generation_info: Dict[str, Any], user_id: int):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.bot = bot
+        self.original_image_data = original_image_data
+        self.generation_info = generation_info
+        self.user_id = user_id
+    
+    @discord.ui.button(label="🔍 Upscale", style=discord.ButtonStyle.secondary)
+    async def upscale_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle upscale button click."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only use buttons on your own generations!", ephemeral=True)
+            return
+        
+        # Check rate limiting
+        if not self.bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        await interaction.response.send_message("🔍 Starting upscaling process...", ephemeral=True)
+        
+        try:
+            # TODO: Implement upscaling workflow
+            await interaction.followup.send("🚧 Upscaling feature coming soon!", ephemeral=True)
+        except Exception as e:
+            self.bot.logger.error(f"Upscaling error: {e}")
+            await interaction.followup.send("❌ Upscaling failed. Please try again.", ephemeral=True)
+    
+    @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
+    async def animate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle animate button click."""
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("❌ You can only use buttons on your own generations!", ephemeral=True)
+            return
+        
+        # Check rate limiting
+        if not self.bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        await interaction.response.send_message("🎬 Starting animation process...", ephemeral=True)
+        
+        try:
+            # TODO: Implement video generation workflow
+            await interaction.followup.send("🚧 Animation feature coming soon!", ephemeral=True)
+        except Exception as e:
+            self.bot.logger.error(f"Animation error: {e}")
+            await interaction.followup.send("❌ Animation failed. Please try again.", ephemeral=True)
+    
+    async def on_timeout(self):
+        """Called when the view times out."""
+        # Disable all buttons
+        for item in self.children:
+            item.disabled = True
+
 # Help command
 @app_commands.command(name="help", description="Show help information about the bot")
 async def help_command(interaction: discord.Interaction):
@@ -529,26 +555,25 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name="📝 Basic Usage",
-        value="Use `/generate` with a prompt to create content:\n"
+        value="Use `/generate` with a prompt to create images:\n"
               "`/generate prompt:a beautiful sunset over mountains`\n"
-              "`/generate prompt:cat video workflow:video_wan_vace_14B_i2v`",
+              "`/generate prompt:cyberpunk city width:1536 height:1024`",
         inline=False
     )
     
     embed.add_field(
-        name="🔧 New Commands",
-        value="• `/workflows` - List all available workflows\n"
-              "• `/generate workflow:name` - Use specific workflow\n"
-              "• `/status` - Check bot and ComfyUI status",
+        name="🔧 Available Commands",
+        value="• `/generate` - Generate AI images\n"
+              "• `/status` - Check bot and ComfyUI status\n"
+              "• `/help` - Show this help message",
         inline=False
     )
     
     embed.add_field(
         name="⚙️ Parameters",
         value="• **prompt** - What you want to generate (required)\n"
-              "• **workflow** - Choose image, video, or upscale workflow\n"
-              "• **negative_prompt** - What to avoid\n"
-              "• **width/height** - Content dimensions (256-2048)\n"
+              "• **negative_prompt** - What to avoid in the image\n"
+              "• **width/height** - Image dimensions (256-2048)\n"
               "• **steps** - Quality vs speed (1-150)\n"
               "• **cfg** - How closely to follow prompt (1.0-30.0)\n"
               "• **batch_size** - Number of images (1-4)\n"
@@ -557,29 +582,30 @@ async def help_command(interaction: discord.Interaction):
     )
     
     embed.add_field(
-        name="🎬 Content Types",
-        value="• **Images** - High-quality AI-generated images\n"
-              "• **Videos** - Convert images to MP4 animations\n"
-              "• **Upscaling** - Enhance image resolution",
+        name="🎬 Post-Generation Actions",
+        value="After generating an image, use the action buttons:\n"
+              "• **🔍 Upscale** - Enhance image resolution\n"
+              "• **🎬 Animate** - Convert image to MP4 video\n"
+              "*(Buttons appear below generated images)*",
         inline=False
     )
     
     embed.add_field(
         name="💡 Tips",
-        value="• Use `/workflows` to see all available options\n"
-              "• Be descriptive in your prompts\n"
+        value="• Be descriptive in your prompts for better results\n"
               "• Use negative prompts to avoid unwanted elements\n"
-              "• Higher steps = better quality but slower\n"
-              "• CFG 5-8 works well for most prompts",
+              "• Higher steps = better quality but slower generation\n"
+              "• CFG 5-8 works well for most prompts\n"
+              "• Try different seeds for variations of the same prompt",
         inline=False
     )
     
     embed.add_field(
         name="🔧 Example Commands",
         value="`/generate prompt:cyberpunk city at night, neon lights`\n"
-              "`/generate prompt:cute cat workflow:video_wan_vace_14B_i2v`\n"
-              "`/generate prompt:fantasy landscape width:1536 height:1024`\n"
-              "`/workflows` - See all available workflows",
+              "`/generate prompt:cute cat negative_prompt:blurry, low quality`\n"
+              "`/generate prompt:fantasy landscape width:1536 height:1024 steps:75`\n"
+              "`/status` - Check if ComfyUI is online",
         inline=False
     )
     
@@ -640,61 +666,6 @@ async def status_command(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-# Workflows command
-@app_commands.command(name="workflows", description="List available workflows")
-async def workflows_command(interaction: discord.Interaction):
-    """List all available workflows."""
-    bot: ComfyUIBot = interaction.client
-    
-    embed = discord.Embed(
-        title="🔧 Available Workflows",
-        description="Choose from these workflows for different generation types:",
-        color=discord.Color.blue()
-    )
-    
-    # Group workflows by type
-    workflow_types = {}
-    for name, config in bot.config.workflows.items():
-        if config.enabled:
-            workflow_type = config.type
-            if workflow_type not in workflow_types:
-                workflow_types[workflow_type] = []
-            workflow_types[workflow_type].append((name, config))
-    
-    # Add fields for each type
-    type_emojis = {
-        "image": "🖼️",
-        "video": "🎬",
-        "upscale": "🔍"
-    }
-    
-    for workflow_type, workflows in workflow_types.items():
-        emoji = type_emojis.get(workflow_type, "⚙️")
-        workflow_list = []
-        
-        for name, config in workflows:
-            is_default = name == bot.config.generation.default_workflow
-            default_marker = " ⭐" if is_default else ""
-            workflow_list.append(f"**{name}**{default_marker}\n{config.description}")
-        
-        embed.add_field(
-            name=f"{emoji} {workflow_type.title()} Workflows",
-            value="\n\n".join(workflow_list) if workflow_list else "None available",
-            inline=False
-        )
-    
-    # Add usage instructions
-    embed.add_field(
-        name="💡 Usage",
-        value="Use `/generate workflow:workflow_name` to specify a workflow\n"
-              "⭐ = Default workflow (used when no workflow specified)",
-        inline=False
-    )
-    
-    embed.set_footer(text="Use /help for more generation options")
-    
-    await interaction.response.send_message(embed=embed)
-
 async def main():
     """Main function to run the bot."""
     # Set up logging
@@ -720,7 +691,6 @@ async def main():
         bot.tree.add_command(generate_command)
         bot.tree.add_command(help_command)
         bot.tree.add_command(status_command)
-        bot.tree.add_command(workflows_command)
         
         logger.info("🤖 Bot is starting up...")
         
