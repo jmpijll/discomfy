@@ -469,6 +469,139 @@ class ImageGenerator:
         except Exception as e:
             self.logger.error(f"Failed to get available workflows: {e}")
             return []
+    
+    async def generate_upscale(
+        self,
+        input_image_path: str,
+        prompt: str = "",
+        negative_prompt: str = "",
+        upscale_factor: float = 2.0,
+        denoise: float = 0.35,
+        steps: int = 20,
+        cfg: float = 7.0,
+        seed: Optional[int] = None,
+        progress_callback=None
+    ) -> Tuple[bytes, Dict[str, Any]]:
+        """
+        Upscale an image using ComfyUI upscale workflow.
+        
+        Args:
+            input_image_path: Path to the input image file
+            prompt: Positive prompt for upscaling
+            negative_prompt: Negative prompt for upscaling
+            upscale_factor: Upscaling factor (default: 2.0)
+            denoise: Denoising strength (default: 0.35)
+            steps: Number of sampling steps (default: 20)
+            cfg: CFG scale (default: 7.0)
+            seed: Random seed (auto-generated if None)
+            progress_callback: Optional callback for progress updates
+        
+        Returns:
+            Tuple of (upscaled_image_data, upscale_info)
+        """
+        try:
+            # Validate inputs
+            if not input_image_path:
+                raise ValueError("Input image path cannot be empty")
+            
+            # Use upscale workflow
+            workflow_name = "upscale_config-1"
+            
+            self.logger.info(f"Starting image upscaling: {input_image_path} (factor: {upscale_factor}x)")
+            
+            # Load and update workflow
+            workflow = self._load_workflow(workflow_name)
+            updated_workflow = self._update_upscale_workflow_parameters(
+                workflow, input_image_path, prompt, negative_prompt, upscale_factor, denoise, steps, cfg, seed
+            )
+            
+            # Queue prompt
+            prompt_id = await self._queue_prompt(updated_workflow)
+            
+            # Wait for completion
+            history = await self._wait_for_completion(prompt_id, progress_callback)
+            
+            # Download upscaled image
+            image_data = await self._download_images(history)
+            
+            # Prepare upscale info
+            upscale_info = {
+                'prompt_id': prompt_id,
+                'input_image': input_image_path,
+                'prompt': prompt,
+                'negative_prompt': negative_prompt,
+                'upscale_factor': upscale_factor,
+                'denoise': denoise,
+                'steps': steps,
+                'cfg': cfg,
+                'seed': seed,
+                'workflow': workflow_name,
+                'timestamp': __import__('time').time(),
+                'type': 'upscale'
+            }
+            
+            self.logger.info(f"Image upscaling completed successfully")
+            return image_data, upscale_info
+            
+        except Exception as e:
+            self.logger.error(f"Image upscaling failed: {e}")
+            raise ComfyUIAPIError(f"Image upscaling failed: {e}")
+    
+    def _update_upscale_workflow_parameters(
+        self,
+        workflow: Dict[str, Any],
+        input_image_path: str,
+        prompt: str = "",
+        negative_prompt: str = "",
+        upscale_factor: float = 2.0,
+        denoise: float = 0.35,
+        steps: int = 20,
+        cfg: float = 7.0,
+        seed: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Update upscale workflow parameters with user inputs."""
+        try:
+            # Create a copy to avoid modifying the original
+            updated_workflow = json.loads(json.dumps(workflow))
+            
+            # Generate random seed if not provided
+            if seed is None:
+                import random
+                seed = random.randint(0, 2**32 - 1)
+            
+            # Update workflow parameters based on the upscale workflow structure
+            for node_id, node_data in updated_workflow.items():
+                class_type = node_data.get('class_type')
+                
+                if class_type == 'LoadImage':
+                    # Update input image
+                    node_data['inputs']['image'] = input_image_path
+                
+                elif class_type == 'CLIPTextEncode':
+                    title = node_data.get('_meta', {}).get('title', '')
+                    if 'positive' in title.lower():
+                        node_data['inputs']['text'] = prompt
+                    elif 'negative' in title.lower():
+                        node_data['inputs']['text'] = negative_prompt
+                
+                elif class_type == 'UltimateSDUpscale':
+                    # Update upscaling parameters
+                    node_data['inputs']['upscale_by'] = upscale_factor
+                    node_data['inputs']['seed'] = seed
+                    node_data['inputs']['steps'] = steps
+                    node_data['inputs']['cfg'] = cfg
+                    node_data['inputs']['denoise'] = denoise
+                
+                elif class_type == 'LoraTextExtractor-b1f83aa2':
+                    # Update LoRA text extractor with prompt
+                    node_data['inputs']['text'] = prompt
+            
+            self.logger.debug(f"Updated upscale workflow parameters: input={input_image_path}, factor={upscale_factor}x")
+            return updated_workflow
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update upscale workflow parameters: {e}")
+            raise ComfyUIAPIError(f"Failed to update upscale workflow parameters: {e}")
 
 # Utility functions for file management
 def save_output_image(image_data: bytes, filename: str) -> Path:

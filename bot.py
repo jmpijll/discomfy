@@ -508,11 +508,69 @@ class PostGenerationView(discord.ui.View):
         await interaction.response.send_message("🔍 Starting upscaling process...", ephemeral=True)
         
         try:
-            # TODO: Implement upscaling workflow
-            await interaction.followup.send("🚧 Upscaling feature coming soon!", ephemeral=True)
+            # Save the original image temporarily for upscaling
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                temp_file.write(self.original_image_data)
+                temp_image_path = temp_file.name
+            
+            try:
+                # Generate upscaled image using ComfyUI
+                async with self.bot.image_generator as gen:
+                    # Use the upscale workflow
+                    upscaled_data, upscale_info = await gen.generate_upscale(
+                        input_image_path=os.path.basename(temp_image_path),
+                        prompt=self.generation_info.get('prompt', ''),
+                        negative_prompt=self.generation_info.get('negative_prompt', ''),
+                        upscale_factor=2.0,
+                        denoise=0.35,
+                        steps=20,
+                        cfg=7.0
+                    )
+                
+                # Create success embed
+                upscale_embed = discord.Embed(
+                    title="✅ Image Upscaled Successfully!",
+                    description=f"**Original Prompt:** {self.generation_info.get('prompt', 'Unknown')[:150]}{'...' if len(self.generation_info.get('prompt', '')) > 150 else ''}",
+                    color=discord.Color.green()
+                )
+                
+                upscale_embed.add_field(
+                    name="Upscale Details",
+                    value=f"**Factor:** 2x\n**Denoise:** 0.35\n**Steps:** 20\n**CFG:** 7.0",
+                    inline=True
+                )
+                
+                upscale_embed.add_field(
+                    name="Requested by",
+                    value=interaction.user.display_name,
+                    inline=True
+                )
+                
+                # Send upscaled image
+                filename = f"upscaled_{int(__import__('time').time())}.png"
+                file = discord.File(BytesIO(upscaled_data), filename=filename)
+                
+                await interaction.followup.send(
+                    embed=upscale_embed,
+                    file=file,
+                    ephemeral=False  # Make it visible to everyone
+                )
+                
+                self.bot.logger.info(f"Successfully upscaled image for {interaction.user}")
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_image_path)
+                except:
+                    pass
+                    
         except Exception as e:
             self.bot.logger.error(f"Upscaling error: {e}")
-            await interaction.followup.send("❌ Upscaling failed. Please try again.", ephemeral=True)
+            await interaction.followup.send("❌ Upscaling failed. Please try again later.", ephemeral=True)
     
     @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
     async def animate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -527,11 +585,87 @@ class PostGenerationView(discord.ui.View):
         await interaction.response.send_message("🎬 Starting animation process...", ephemeral=True)
         
         try:
-            # TODO: Implement video generation workflow
-            await interaction.followup.send("🚧 Animation feature coming soon!", ephemeral=True)
+            # Save the original image temporarily for video generation
+            import tempfile
+            import os
+            
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
+                temp_file.write(self.original_image_data)
+                temp_image_path = temp_file.name
+            
+            try:
+                # Progress callback for video generation
+                async def video_progress_callback(status: str, queue_position: int = 0):
+                    try:
+                        if queue_position > 0:
+                            description = f"⏳ Queue position: {queue_position}\n📊 Status: {status.title()}"
+                        else:
+                            description = f"📊 Status: {status.title()}"
+                        
+                        await interaction.edit_original_response(
+                            content=f"🎬 Generating video...\n{description}"
+                        )
+                    except:
+                        # Ignore errors in progress updates
+                        pass
+                
+                # Generate video using ComfyUI
+                async with self.bot.video_generator as gen:
+                    video_data, filename, video_info = await gen.generate_video(
+                        prompt=self.generation_info.get('prompt', ''),
+                        negative_prompt=self.generation_info.get('negative_prompt', ''),
+                        workflow_name="video_wan_vace_14B_i2v",
+                        width=720,
+                        height=720,
+                        steps=6,
+                        cfg=1.0,
+                        length=81,
+                        strength=0.7,
+                        input_image_path=os.path.basename(temp_image_path),
+                        progress_callback=video_progress_callback
+                    )
+                
+                # Create success embed
+                video_embed = discord.Embed(
+                    title="✅ Video Generated Successfully!",
+                    description=f"**Original Prompt:** {self.generation_info.get('prompt', 'Unknown')[:150]}{'...' if len(self.generation_info.get('prompt', '')) > 150 else ''}",
+                    color=discord.Color.green()
+                )
+                
+                video_embed.add_field(
+                    name="Video Details",
+                    value=f"**Resolution:** 720x720\n**Length:** 81 frames\n**Strength:** 0.7\n**Steps:** 6",
+                    inline=True
+                )
+                
+                video_embed.add_field(
+                    name="Requested by",
+                    value=interaction.user.display_name,
+                    inline=True
+                )
+                
+                # Send video file
+                video_filename = f"animated_{int(__import__('time').time())}.mp4"
+                file = discord.File(BytesIO(video_data), filename=video_filename)
+                
+                await interaction.followup.send(
+                    embed=video_embed,
+                    file=file,
+                    ephemeral=False  # Make it visible to everyone
+                )
+                
+                self.bot.logger.info(f"Successfully generated video for {interaction.user}")
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_image_path)
+                except:
+                    pass
+                    
         except Exception as e:
             self.bot.logger.error(f"Animation error: {e}")
-            await interaction.followup.send("❌ Animation failed. Please try again.", ephemeral=True)
+            await interaction.followup.send("❌ Animation failed. Please try again later.", ephemeral=True)
 
 # Help command
 @app_commands.command(name="help", description="Show help information about the bot")
@@ -574,8 +708,8 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="🎬 Post-Generation Actions",
         value="After generating an image, use the action buttons:\n"
-              "• **🔍 Upscale** - Enhance image resolution\n"
-              "• **🎬 Animate** - Convert image to MP4 video\n"
+              "• **🔍 Upscale** - Enhance image resolution (2x upscaling)\n"
+              "• **🎬 Animate** - Convert image to MP4 video (720x720, 81 frames)\n"
               "*(Anyone can use these buttons on any generation)*",
         inline=False
     )
