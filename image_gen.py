@@ -441,7 +441,11 @@ class ImageGenerator:
                                 self.logger.info(f"✅ Prompt {prompt_id} completed successfully!")
                                 progress.mark_completed()
                                 if progress_callback:
-                                    await progress_callback(progress)
+                                    try:
+                                        await progress_callback(progress)
+                                        self.logger.debug("✅ Final progress callback sent successfully")
+                                    except Exception as callback_error:
+                                        self.logger.warning(f"Failed to send final progress callback: {callback_error}")
                                 return history[prompt_id]
                 except Exception as e:
                     self.logger.warning(f"Error checking history: {e}")
@@ -483,7 +487,11 @@ class ImageGenerator:
                                             self.logger.info(f"✅ Found completed prompt {prompt_id} in history")
                                             progress.mark_completed()
                                             if progress_callback:
-                                                await progress_callback(progress)
+                                                try:
+                                                    await progress_callback(progress)
+                                                    self.logger.debug("✅ Final progress callback sent successfully (from queue check)")
+                                                except Exception as callback_error:
+                                                    self.logger.warning(f"Failed to send final progress callback: {callback_error}")
                                             return history[prompt_id]
                                 
                                 # Prompt disappeared - this might be an error
