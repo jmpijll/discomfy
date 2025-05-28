@@ -491,7 +491,7 @@ class ImageGenerator:
                 except Exception as e:
                     self.logger.warning(f"Error checking history: {e}")
                 
-                # Check queue status
+                # Check queue status for position information (not detailed monitoring)
                 try:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
@@ -499,65 +499,49 @@ class ImageGenerator:
                             queue_running = queue_data.get('queue_running', [])
                             queue_pending = queue_data.get('queue_pending', [])
                             
-                            # Check if our prompt is in the queue
-                            is_running = any(item[1] == prompt_id for item in queue_running)
-                            is_pending = any(item[1] == prompt_id for item in queue_pending)
-                            
-                            if is_pending:
-                                # Still in queue
-                                queue_position = 1
-                                for i, item in enumerate(queue_pending):
-                                    if item[1] == prompt_id:
-                                        queue_position = i + 1
-                                        break
-                                progress.update_queue_status(queue_position)
-                                self.logger.debug(f"Prompt {prompt_id} in queue position {queue_position}")
-                            elif is_running:
-                                # Currently executing
+                            # Check if our prompt is currently running
+                            is_running = any(item.get('prompt_id') == prompt_id for item in queue_running)
+                            if is_running:
                                 progress.status = "running"
-                                progress.phase = "Generating image"
-                                progress.percentage = 50.0  # Rough estimate
-                                self.logger.debug(f"Prompt {prompt_id} is running")
+                                progress.phase = "Processing"
                             else:
-                                # Not in queue - check history one more time
-                                self.logger.warning(f"Prompt {prompt_id} not found in queue, checking history...")
-                                async with self.session.get(f"{self.base_url}/history/{prompt_id}") as hist_response:
-                                    if hist_response.status == 200:
-                                        history = await hist_response.json()
-                                        if prompt_id in history:
-                                            self.logger.info(f"✅ Found completed prompt {prompt_id} in history")
-                                            progress.mark_completed()
-                                            if progress_callback:
-                                                try:
-                                                    await progress_callback(progress)
-                                                except Exception as callback_error:
-                                                    self.logger.warning(f"Failed to send final progress callback: {callback_error}")
-                                            return history[prompt_id]
+                                # Check position in queue
+                                position = None
+                                for i, item in enumerate(queue_pending):
+                                    if item.get('prompt_id') == prompt_id:
+                                        position = i + 1
+                                        break
                                 
-                                # Prompt disappeared - this might be an error
-                                raise ComfyUIAPIError(f"Prompt {prompt_id} disappeared from queue without completion")
+                                if position:
+                                    progress.update_queue_status(position)
                             
-                            # Update progress
-                            if progress_callback:
-                                await progress_callback(progress)
-                                
+                            # Send progress update periodically
+                            if progress_callback and (time.time() - start_time) % 10 < check_interval:
+                                try:
+                                    await progress_callback(progress)
+                                except Exception as callback_error:
+                                    # Don't spam logs with callback errors
+                                    pass
                 except Exception as e:
-                    self.logger.warning(f"Error checking queue: {e}")
+                    # Reduced logging - only warn occasionally
+                    if (time.time() - start_time) % 30 < check_interval:
+                        self.logger.warning(f"Error checking queue status: {e}")
                 
                 # Wait before next check
                 await asyncio.sleep(check_interval)
                 
-                # Log progress every 15 seconds
+                # Log progress every 30 seconds only
                 elapsed = time.time() - start_time
-                if int(elapsed) % 15 == 0:
+                if elapsed % 30 < check_interval and elapsed > 30:
                     self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s elapsed)")
             
             # Timeout reached
-            raise ComfyUIAPIError(f"Timeout waiting for prompt {prompt_id} to complete (waited {max_wait_time}s)")
+            raise ComfyUIAPIError(f"Timeout waiting for prompt {prompt_id} after {max_wait_time} seconds")
             
         except Exception as e:
-            self.logger.error(f"Error in polling method: {e}")
-            raise ComfyUIAPIError(f"Error waiting for completion: {e}")
+            if "Timeout" not in str(e):
+                self.logger.error(f"Error in polling method: {e}")
+            raise
     
     async def _download_images(self, history: Dict[str, Any]) -> List[bytes]:
         """Download generated images from ComfyUI."""
@@ -669,7 +653,7 @@ class ImageGenerator:
         lora_name: Optional[str] = None,
         lora_strength: float = 1.0,
         progress_callback=None
-    ) -> Tuple[bytes, Dict[str, Any]]:
+    ) -> Tuple[List[bytes], Dict[str, Any]]:
         """
         Generate images using ComfyUI.
         
@@ -688,7 +672,7 @@ class ImageGenerator:
             progress_callback: Optional callback for progress updates
         
         Returns:
-            Tuple of (image_data, generation_info)
+            Tuple of (list_of_image_data, generation_info)
         """
         try:
             # Validate inputs
@@ -719,14 +703,8 @@ class ImageGenerator:
             # Wait for completion
             history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
             
-            # Download images
+            # Download images - return as individual images, not collage
             images = await self._download_images(history)
-            
-            # Create collage if multiple images
-            if len(images) > 1:
-                final_image = self._create_collage(images)
-            else:
-                final_image = images[0]
             
             # Prepare generation info
             generation_info = {
@@ -747,7 +725,7 @@ class ImageGenerator:
             }
             
             self.logger.info(f"Image generation completed successfully: {len(images)} images")
-            return final_image, generation_info
+            return images, generation_info
             
         except Exception as e:
             self.logger.error(f"Image generation failed: {e}")

@@ -1606,47 +1606,29 @@ class GenerateNowButton(discord.ui.Button):
             )
             return
         
-        # Validate workflow exists
-        workflow_name = f"{view.model}_lora"
-        workflow_config = view.bot.config.workflows.get(workflow_name)
-        
-        if not workflow_config or not workflow_config.enabled:
-            await interaction.response.send_message(
-                f"❌ The '{view.model}' model is not available or disabled.",
-                ephemeral=True
-            )
-            return
-        
-        # Respond immediately to avoid timeout
-        await interaction.response.defer()
-        
         try:
-            # Create generation parameters
-            generation_params = {
-                'prompt': view.prompt,
-                'negative_prompt': view.negative_prompt,
-                'workflow_name': workflow_name,
-                'model': view.model,
-                'width': view.width,
-                'height': view.height,
-                'steps': view.steps,
-                'cfg': view.cfg,
-                'batch_size': view.batch_size,
-                'seed': view.seed
-            }
+            # Respond immediately to avoid timeout
+            await interaction.response.defer()
             
-            # Start generation directly without creating another view
-            # Send progress update
+            # Get the setup message for potential deletion
+            setup_message = interaction.message
+            
+            # Determine workflow based on model
+            workflow_name = f"{view.model}_lora"
+            workflow_config = view.bot.config.workflows.get(workflow_name)
+            
+            if not workflow_config or not workflow_config.enabled:
+                await interaction.edit_original_response(
+                    content="❌ Selected model is not available.",
+                    view=None
+                )
+                return
+            
+            # Show initial progress
             model_display = "Flux" if view.model == "flux" else "HiDream"
-            lora_info = f" with LoRA '{view.selected_lora}' (strength: {view.lora_strength})" if view.selected_lora else " (no LoRA)"
-            
             progress_embed = discord.Embed(
-                title=f"🎨 Generating Image - {model_display}",
-                description=f"🎨 Creating your image with prompt: `{view.prompt[:100]}{'...' if len(view.prompt) > 100 else ''}`\n"
-                           f"🤖 Model: {model_display}{lora_info}\n"
-                           f"📏 Size: {view.width}x{view.height} | "
-                           f"🔧 Steps: {view.steps} | ⚙️ CFG: {view.cfg}\n"
-                           f"🔄 Generating {view.batch_size} image{'s' if view.batch_size > 1 else ''}...",
+                title="🎨 Starting Image Generation...",
+                description=f"**Prompt:** {view.prompt[:150]}{'...' if len(view.prompt) > 150 else ''}",
                 color=discord.Color.blue()
             )
             
@@ -1666,9 +1648,9 @@ class GenerateNowButton(discord.ui.Button):
                 settings_text
             )
             
-            # Generate image
+            # Generate images (now returns list of individual images)
             async with view.bot.image_generator as gen:
-                image_data, generation_info = await gen.generate_image(
+                images_list, generation_info = await gen.generate_image(
                     prompt=view.prompt,
                     negative_prompt=view.negative_prompt,
                     workflow_name=workflow_name,
@@ -1692,87 +1674,105 @@ class GenerateNowButton(discord.ui.Button):
                 
                 # Small delay to ensure the completion message is visible
                 await asyncio.sleep(1)
+                
+                # Clean up the setup message to avoid chat clutter
+                try:
+                    await setup_message.delete()
+                    view.bot.logger.info("🧹 Cleaned up setup message")
+                except Exception as cleanup_error:
+                    view.bot.logger.warning(f"Failed to clean up setup message: {cleanup_error}")
+                    
             except Exception as progress_error:
                 view.bot.logger.warning(f"Failed to send final progress update: {progress_error}")
             
-            # Save image
-            filename = get_unique_filename(f"discord_{interaction.user.id}")
-            output_path = save_output_image(image_data, filename)
-            file_data = image_data
-            
-            # Create success embed
-            success_embed = discord.Embed(
-                title=f"✅ Image Generated Successfully - {model_display}!",
-                description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}",
-                color=discord.Color.green()
-            )
-            
-            # Add generation details
-            details_text = f"**Size:** {view.width}x{view.height}\n" + \
-                          f"**Steps:** {view.steps} | **CFG:** {view.cfg}\n" + \
-                          f"**Seed:** {generation_info.get('seed', 'Unknown')}\n" + \
-                          f"**Images:** {generation_info.get('num_images', 1)}"
-            
-            success_embed.add_field(
-                name="Generation Details",
-                value=details_text,
-                inline=True
-            )
-            
-            # Add model and LoRA info
-            model_info = f"**Model:** {model_display}\n"
-            if view.selected_lora:
-                model_info += f"**LoRA:** {view.selected_lora}\n**LoRA Strength:** {view.lora_strength}"
-            else:
-                model_info += f"**LoRA:** None"
-            
-            success_embed.add_field(
-                name="Model Info",
-                value=model_info,
-                inline=True
-            )
-            
-            success_embed.add_field(
-                name="Technical Info",
-                value=f"**Workflow:** {generation_info.get('workflow', 'Default')}\n"
-                      f"**Prompt ID:** {generation_info.get('prompt_id', 'Unknown')[:8]}...",
-                inline=True
-            )
-            
-            success_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
-            
-            # Create action buttons view
-            post_gen_view = PostGenerationView(
-                bot=view.bot,
-                original_image_data=file_data,
-                generation_info=generation_info,
-                user_id=interaction.user.id
-            )
-            
-            # Send the final result
-            file = discord.File(BytesIO(file_data), filename=filename)
-            
-            try:
-                # Try to edit the original response with the file
-                await interaction.edit_original_response(
-                    embed=success_embed,
-                    attachments=[file],
-                    view=post_gen_view
-                )
-                view.bot.logger.info(f"Successfully sent image via edit_original_response for {interaction.user}")
+            # Send individual images with individual action buttons
+            for i, image_data in enumerate(images_list):
+                # Save image
+                filename = get_unique_filename(f"discord_{interaction.user.id}_{i}")
+                save_output_image(image_data, filename)
                 
-            except Exception as send_error:
-                view.bot.logger.error(f"Error sending final image: {send_error}")
-                # Try sending as followup
+                # Create success embed for this image
+                success_embed = discord.Embed(
+                    title=f"✅ Image {i + 1}/{len(images_list)} Generated - {model_display}!",
+                    description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}",
+                    color=discord.Color.green()
+                )
+                
+                # Add generation details
+                details_text = f"**Size:** {view.width}x{view.height}\n" + \
+                              f"**Steps:** {view.steps} | **CFG:** {view.cfg}\n" + \
+                              f"**Seed:** {generation_info.get('seed', 'Unknown')}\n" + \
+                              f"**Batch:** {i + 1} of {generation_info.get('num_images', 1)}"
+                
+                success_embed.add_field(
+                    name="Generation Details",
+                    value=details_text,
+                    inline=True
+                )
+                
+                # Add model and LoRA info
+                model_info = f"**Model:** {model_display}\n"
+                if view.selected_lora:
+                    model_info += f"**LoRA:** {view.selected_lora}\n**LoRA Strength:** {view.lora_strength}"
+                else:
+                    model_info += f"**LoRA:** None"
+                
+                success_embed.add_field(
+                    name="Model Info",
+                    value=model_info,
+                    inline=True
+                )
+                
+                success_embed.add_field(
+                    name="Technical Info",
+                    value=f"**Workflow:** {generation_info.get('workflow', 'Default')}\n"
+                          f"**Prompt ID:** {generation_info.get('prompt_id', 'Unknown')[:8]}...",
+                    inline=True
+                )
+                
+                success_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+                
+                # Create individual action buttons view for this image
+                individual_view = IndividualImageView(
+                    bot=view.bot,
+                    image_data=image_data,
+                    generation_info=generation_info,
+                    image_index=i
+                )
+                
+                # Send this individual image
+                file = discord.File(BytesIO(image_data), filename=filename)
+                
                 try:
-                    await interaction.followup.send(
-                        embed=success_embed,
-                        file=discord.File(BytesIO(file_data), filename=filename),  # Create new file object
-                        view=post_gen_view
-                    )
-                    view.bot.logger.info(f"Successfully sent image via followup for {interaction.user}")
-                except Exception as followup_error:
-                    view.bot.logger.error(f"Failed to send followup image: {followup_error}")
+                    if i == 0:
+                        # Edit the original response for the first image
+                        await interaction.edit_original_response(
+                            embed=success_embed,
+                            attachments=[file],
+                            view=individual_view
+                        )
+                        view.bot.logger.info(f"Successfully sent image {i + 1} via edit_original_response for {interaction.user}")
+                    else:
+                        # Send followup messages for additional images
+                        await interaction.followup.send(
+                            embed=success_embed,
+                            file=file,
+                            view=individual_view
+                        )
+                        view.bot.logger.info(f"Successfully sent image {i + 1} via followup for {interaction.user}")
+                        
+                except Exception as send_error:
+                    view.bot.logger.error(f"Error sending image {i + 1}: {send_error}")
+                    # Try sending as followup if edit fails
+                    try:
+                        await interaction.followup.send(
+                            embed=success_embed,
+                            file=discord.File(BytesIO(image_data), filename=filename),  # Create new file object
+                            view=individual_view
+                        )
+                        view.bot.logger.info(f"Successfully sent image {i + 1} via fallback followup for {interaction.user}")
+                    except Exception as followup_error:
+                        view.bot.logger.error(f"Failed to send followup image {i + 1}: {followup_error}")
             
             view.bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id}) with model: {view.model}")
             
@@ -1797,9 +1797,221 @@ class GenerateNowButton(discord.ui.Button):
                 except:
                     view.bot.logger.error("Failed to send error response to user")
 
+class IndividualImageView(discord.ui.View):
+    """View for individual images with upscale and animate buttons."""
+    
+    def __init__(self, bot: ComfyUIBot, image_data: bytes, generation_info: Dict[str, Any], image_index: int):
+        super().__init__(timeout=None)  # No timeout for post-generation buttons
+        self.bot = bot
+        self.image_data = image_data
+        self.generation_info = generation_info
+        self.image_index = image_index
+    
+    @discord.ui.button(label="🔍 Upscale", style=discord.ButtonStyle.secondary)
+    async def upscale_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Upscale this individual image."""
+        try:
+            # Check rate limiting
+            if not self.bot._check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "❌ **Rate Limited!** Please wait before making another request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Show public status that someone is upscaling
+            await interaction.response.send_message(
+                f"🔍 **{interaction.user.display_name}** is upscaling image #{self.image_index + 1}...\n"
+                f"*Please wait, this may take a moment.*",
+                ephemeral=False  # Public message
+            )
+            
+            # Extract original parameters for better upscaling
+            original_prompt = self.generation_info.get('prompt', '')
+            original_negative = self.generation_info.get('negative_prompt', '')
+            
+            # Create progress callback for upscaling
+            progress_callback = await self.bot._create_unified_progress_callback(
+                interaction,
+                "Image Upscaling",
+                f"Upscaling image #{self.image_index + 1}",
+                f"Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
+            )
+            
+            # Perform upscaling
+            async with self.bot.image_generator as gen:
+                upscaled_data, upscale_info = await gen.generate_upscale(
+                    input_image_data=self.image_data,
+                    prompt=original_prompt,
+                    negative_prompt=original_negative,
+                    upscale_factor=2.0,
+                    denoise=0.35,
+                    steps=20,
+                    cfg=7.0,
+                    progress_callback=progress_callback
+                )
+            
+            # Send final completion status
+            try:
+                final_progress = ProgressInfo()
+                final_progress.mark_completed()
+                await progress_callback(final_progress)
+                self.bot.logger.info("✅ Successfully sent completion status to Discord for Image Upscaling")
+            except Exception as progress_error:
+                self.bot.logger.warning(f"Failed to send final upscale progress: {progress_error}")
+            
+            # Save upscaled image
+            filename = get_unique_filename(f"upscaled_{interaction.user.id}")
+            save_output_image(upscaled_data, filename)
+            
+            # Create success embed
+            success_embed = discord.Embed(
+                title="✅ Image Upscaled Successfully!",
+                description=f"**Original Image #{self.image_index + 1}** has been upscaled 2x",
+                color=discord.Color.green()
+            )
+            
+            success_embed.add_field(
+                name="Upscale Details",
+                value=f"**Factor:** 2x\n**Method:** AI Super-Resolution\n**Denoise:** 0.35",
+                inline=True
+            )
+            
+            success_embed.add_field(
+                name="Original Prompt",
+                value=f"{original_prompt[:100]}{'...' if len(original_prompt) > 100 else ''}",
+                inline=False
+            )
+            
+            success_embed.set_footer(text=f"Upscaled by {interaction.user.display_name}")
+            
+            # Create new view for the upscaled image
+            upscaled_view = IndividualImageView(
+                bot=self.bot,
+                image_data=upscaled_data,
+                generation_info=upscale_info,
+                image_index=0  # Upscaled images are standalone
+            )
+            
+            # Send upscaled image
+            file = discord.File(BytesIO(upscaled_data), filename=filename)
+            await interaction.followup.send(
+                embed=success_embed,
+                file=file,
+                view=upscaled_view
+            )
+            
+            self.bot.logger.info(f"Successfully generated upscaled image for {interaction.user}")
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error in upscale: {e}")
+            try:
+                error_embed = discord.Embed(
+                    title="❌ Upscaling Failed",
+                    description=f"Failed to upscale image: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
+    
+    @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
+    async def animate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Animate this individual image."""
+        try:
+            # Check rate limiting
+            if not self.bot._check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "❌ **Rate Limited!** Please wait before making another request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Show public status that someone is animating
+            await interaction.response.send_message(
+                f"🎬 **{interaction.user.display_name}** is animating image #{self.image_index + 1}...\n"
+                f"*This will take 2-3 minutes to render 81 frames.*",
+                ephemeral=False  # Public message
+            )
+            
+            # Extract original parameters
+            original_prompt = self.generation_info.get('prompt', '')
+            
+            # Create progress callback for video generation
+            progress_callback = await self.bot._create_unified_progress_callback(
+                interaction,
+                "Video Generation",
+                f"Animating image #{self.image_index + 1}",
+                f"Creating 81-frame animation from {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')} image"
+            )
+            
+            # Perform video generation
+            async with self.bot.video_generator as gen:
+                video_data, video_info = await gen.generate_video(
+                    input_image_data=self.image_data,
+                    prompt=original_prompt,
+                    length=81,
+                    progress_callback=progress_callback
+                )
+            
+            # Send final completion status
+            try:
+                final_progress = ProgressInfo()
+                final_progress.mark_completed()
+                await progress_callback(final_progress)
+                self.bot.logger.info("✅ Successfully sent completion status to Discord for Video Generation")
+            except Exception as progress_error:
+                self.bot.logger.warning(f"Failed to send final video progress: {progress_error}")
+            
+            # Save video
+            filename = get_unique_video_filename(f"animated_{interaction.user.id}")
+            save_output_video(video_data, filename)
+            
+            # Create success embed
+            success_embed = discord.Embed(
+                title="✅ Video Generated Successfully!",
+                description=f"**Image #{self.image_index + 1}** has been animated into a video",
+                color=discord.Color.purple()
+            )
+            
+            success_embed.add_field(
+                name="Video Details",
+                value=f"**Format:** MP4\n**Frames:** 81\n**Resolution:** 720x720",
+                inline=True
+            )
+            
+            success_embed.add_field(
+                name="Original Prompt",
+                value=f"{original_prompt[:100]}{'...' if len(original_prompt) > 100 else ''}",
+                inline=False
+            )
+            
+            success_embed.set_footer(text=f"Animated by {interaction.user.display_name}")
+            
+            # Send video file
+            file = discord.File(BytesIO(video_data), filename=filename)
+            await interaction.followup.send(
+                embed=success_embed,
+                file=file
+            )
+            
+            self.bot.logger.info(f"Successfully generated video for {interaction.user}")
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error in video generation: {e}")
+            try:
+                error_embed = discord.Embed(
+                    title="❌ Video Generation Failed",
+                    description=f"Failed to generate video: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
+
 async def main():
     """Main function to run the bot."""
-    # Set up logging
+    # Set up logging with strict filtering
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -1809,7 +2021,7 @@ async def main():
         ]
     )
     
-    # Explicitly disable debug logging for all modules - more restrictive
+    # Completely disable debug logging globally - very restrictive
     logging.getLogger().setLevel(logging.INFO)
     logging.getLogger('image_gen').setLevel(logging.INFO)
     logging.getLogger('video_gen').setLevel(logging.INFO)
@@ -1817,9 +2029,14 @@ async def main():
     logging.getLogger('aiohttp').setLevel(logging.WARNING)
     logging.getLogger('asyncio').setLevel(logging.WARNING)
     logging.getLogger('websockets').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
     
-    # Disable all debug logging globally
+    # Completely disable all debug logging - this should stop all monitoring spam
     logging.disable(logging.DEBUG)
+    
+    # Also silence specific loggers that might cause spam
+    logging.getLogger('comfyui').setLevel(logging.WARNING)
+    logging.getLogger('websocket').setLevel(logging.WARNING)
     
     # Create logs directory
     Path("logs").mkdir(exist_ok=True)
