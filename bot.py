@@ -252,9 +252,6 @@ class ComfyUIBot(commands.Bot):
                 if settings_text:
                     embed.set_footer(text=settings_text)
                 
-                # Log the progress update
-                self.logger.debug(f"Sending progress update: {progress.status} - {title}")
-                
                 # Always use edit_original_response since we already responded
                 await interaction.edit_original_response(embed=embed)
                 
@@ -828,6 +825,12 @@ async def main():
             logging.FileHandler('logs/bot.log', encoding='utf-8')
         ]
     )
+    
+    # Explicitly disable debug logging for all modules
+    logging.getLogger('image_gen').setLevel(logging.INFO)
+    logging.getLogger('video_gen').setLevel(logging.INFO)
+    logging.getLogger('discord').setLevel(logging.WARNING)
+    logging.getLogger('aiohttp').setLevel(logging.WARNING)
     
     # Create logs directory
     Path("logs").mkdir(exist_ok=True)
