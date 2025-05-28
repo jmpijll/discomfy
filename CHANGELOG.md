@@ -5,6 +5,36 @@ All notable changes to the Discord ComfyUI Bot project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-01-29
+
+### Added
+- **Advanced Real-Time Progress Tracking**: Complete WebSocket integration with ComfyUI API
+- **Step-Based Progress Calculation**: Progress percentage now based purely on sampling steps
+- **Client ID Management**: Proper client_id handling ensures detailed WebSocket messages
+- **Multi-Phase Video Support**: Enhanced tracking for video generation with up to 161 steps
+- **Fallback HTTP Polling**: Graceful degradation when WebSocket unavailable
+- **Enhanced Progress Display**: Shows current sampling step (e.g., "152/161") with accurate percentages
+
+### Fixed  
+- **Animate Function**: Now correctly displays original image prompt instead of generic text
+- **Upscale Function**: Now correctly displays original image prompt instead of generic text
+- **WebSocket Connection**: Proper client_id retrieval prevents empty progress messages
+- **Progress Updates**: 1-second intervals with accurate step-based calculations
+- **Video Generation**: Extended 10-minute timeout for complex video workflows
+
+### Changed
+- **Progress Tracking**: Moved from node-based to step-based progress calculation
+- **WebSocket Implementation**: Complete rewrite with proper message handling
+- **Progress Display**: Enhanced format showing detailed sampling progress
+- **Error Handling**: Improved WebSocket timeout and fallback mechanisms
+
+### Technical Improvements
+- Added comprehensive WebSocket message type handling (`progress`, `executing`, `executed`, `execution_success`, `status`)
+- Implemented proper client_id workflow for ComfyUI WebSocket communication
+- Enhanced ProgressInfo class with step-based tracking and caching support
+- Added fallback mechanisms for WebSocket failures
+- Improved logging and debugging for progress tracking issues
+
 ## [1.0.0] - 2024-05-29
 
 ### 🎉 Initial Release
