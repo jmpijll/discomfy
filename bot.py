@@ -313,13 +313,13 @@ async def generate_command(
             await interaction.response.defer()
         except discord.NotFound:
             # Interaction already expired
-            self.logger.warning(f"Discord interaction expired before defer for user {interaction.user.id}")
+            bot.logger.warning(f"Discord interaction expired before defer for user {interaction.user.id}")
             return
         except discord.HTTPException as e:
             if e.code == 40060:  # Interaction already acknowledged
                 pass  # This is fine, continue
             else:
-                self.logger.error(f"Failed to defer interaction: {e}")
+                bot.logger.error(f"Failed to defer interaction: {e}")
                 return
         
         # Create setup embed
@@ -1027,15 +1027,17 @@ class PostGenerationView(discord.ui.View):
             # Generate video using ComfyUI
             async with self.bot.video_generator as gen:
                 video_data, filename, video_info = await gen.generate_video(
-                    input_image_data=self.original_image_data,
                     prompt=self.generation_info.get('prompt', ''),
                     negative_prompt=self.generation_info.get('negative_prompt', ''),
-                    upscale_factor=2.0,
-                    denoise=0.35,
-                    steps=20,
-                    cfg=7.0,
+                    workflow_name=None,  # Use default video workflow
+                    width=720,
+                    height=720,
+                    steps=6,
+                    cfg=1.0,
                     length=81,
                     strength=0.7,
+                    seed=None,
+                    input_image_data=self.original_image_data,
                     progress_callback=progress_callback
                 )
             
@@ -1894,7 +1896,7 @@ class IndividualImageView(discord.ui.View):
             progress_callback = await self.bot._create_unified_progress_callback(
                 interaction,
                 "Image Upscaling",
-                f"Upscaling image #{self.image_index + 1}",
+                original_prompt,  # Use the actual original prompt instead of generic text
                 f"Factor: 2x | Method: AI Super-Resolution | Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
             )
             
@@ -2000,7 +2002,7 @@ class IndividualImageView(discord.ui.View):
             progress_callback = await self.bot._create_unified_progress_callback(
                 interaction,
                 "Video Generation",
-                f"Animating image #{self.image_index + 1}",
+                original_prompt,  # Use the actual original prompt instead of generic text
                 f"Resolution: 720x720 | Length: 81 frames | Steps: 6 | CFG: 1.0 | Strength: 0.7"
             )
             
@@ -2017,7 +2019,7 @@ class IndividualImageView(discord.ui.View):
                     length=81,
                     strength=0.7,
                     seed=None,
-                    input_image_data=self.image_data,
+                    input_image_data=self.image_data,  # Fix: use self.image_data instead of self.original_image_data
                     progress_callback=progress_callback
                 )
             

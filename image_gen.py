@@ -45,11 +45,18 @@ class ProgressInfo:
         self._workflow_nodes = set()  # All nodes in the workflow
         self._executed_nodes = set()  # Nodes that have been executed
         self._cached_nodes = set()   # Nodes that were cached (skipped)
+        self._workflow_data = None  # Store the full workflow for video detection
+        
+        # Step-based progress tracking
+        self._first_step_reached = False
+        self._step_progress_history = []  # Track multiple step sequences for upscaling
+        self._current_step_sequence = 0  # For multi-iteration workflows like upscaling
         
     def set_workflow_nodes(self, workflow: Dict[str, Any]):
         """Initialize with all nodes from workflow for accurate progress tracking."""
         self._workflow_nodes = set(workflow.keys())
         self._total_nodes = len(self._workflow_nodes)
+        self._workflow_data = workflow  # Store the full workflow for video detection
         
     def update_queue_status(self, position: int):
         """Update queue position - only when genuinely queued."""
@@ -66,9 +73,10 @@ class ProgressInfo:
             self._execution_started = True
             self.start_time = time.time()  # Reset start time for accurate elapsed time
             self._last_update_time = time.time()
-            self.phase = "Starting generation"
-            self.percentage = 5.0  # Show some initial progress
-        
+            if not self._first_step_reached:
+                self.phase = "Loading"
+                self.percentage = 0.0  # Start at 0% until first step
+            
     def update_cached_nodes(self, cached_nodes: list):
         """Update when nodes are cached (execution skipped)."""
         if not self._execution_started:
@@ -78,7 +86,7 @@ class ProgressInfo:
             if node_id in self._workflow_nodes:
                 self._cached_nodes.add(node_id)
         
-        self._update_progress_from_nodes()
+        # Don't update progress from nodes anymore - only from steps
         
     def update_node_execution(self, node_id: str):
         """Update when a new node starts executing."""
@@ -91,66 +99,63 @@ class ProgressInfo:
         if node_id and node_id != "None" and node_id in self._workflow_nodes:
             self._executed_nodes.add(node_id)
             
-        self._update_progress_from_nodes()
-            
-    def _update_progress_from_nodes(self):
-        """Calculate progress based on completed and cached nodes."""
-        if self._total_nodes == 0:
-            return
-            
-        # Total processed nodes (executed + cached)
-        total_processed = len(self._executed_nodes) + len(self._cached_nodes)
+        # Don't update progress from nodes anymore - only from steps
         
-        # Calculate base percentage (reserve last 10% for finalization)
-        if total_processed > 0:
-            base_percentage = (total_processed / self._total_nodes) * 90
-            self.percentage = min(90, max(5, base_percentage))
-            
-            # Update user-friendly phase based on progress
-            progress_ratio = total_processed / self._total_nodes
-            if progress_ratio < 0.1:
-                self.phase = "Initializing"
-            elif progress_ratio < 0.3:
-                self.phase = "Processing prompt"
-            elif progress_ratio < 0.7:
-                self.phase = "Generating image"
-            elif progress_ratio < 0.9:
-                self.phase = "Refining details"
-            else:
-                self.phase = "Finalizing"
-        
-        # Track progress for time estimation
-        current_time = time.time()
-        self._progress_history.append((current_time, self.percentage))
-        # Keep only last 10 data points
-        if len(self._progress_history) > 10:
-            self._progress_history.pop(0)
-            
-        self._last_update_time = current_time
-            
     def update_step_progress(self, current: int, total: int):
-        """Update K-Sampler step progress."""
+        """Update K-Sampler step progress - this is now the PRIMARY progress method."""
         if not self._execution_started:
             return
             
         self._current_step = current
         self._total_steps = total
         
-        if self._total_steps > 0 and self.status == "running":
-            # Add step-level granularity to the percentage
-            if self._total_nodes > 0:
-                # Calculate step progress within current node (adds up to ~5% for typical workflows)
-                step_progress = (self._current_step / self._total_steps) * 5
-                base_progress = (len(self._executed_nodes) + len(self._cached_nodes)) / self._total_nodes * 90
-                self.percentage = min(90, max(5, base_progress + step_progress))
-            
-            # Update phase for sampling
-            if self._current_step > 0:
-                self.phase = f"Sampling ({current}/{total})"
+        # Mark that we've reached the first step
+        if current > 0 and not self._first_step_reached:
+            self._first_step_reached = True
+            self.phase = f"Sampling ({current}/{total})"
+        
+        if self._total_steps > 0 and current > 0:
+            # Check if this is a new sequence (for multi-iteration workflows like upscaling)
+            if current == 1 and self._current_step > 1:
+                self._current_step_sequence += 1
+                
+            # Calculate step-based progress
+            if self._first_step_reached:
+                # For single sequence (normal generation/video)
+                if self._current_step_sequence == 0:
+                    step_percentage = (current / total) * 100
+                    self.percentage = min(95, step_percentage)  # Reserve 5% for finalization
+                else:
+                    # For multi-sequence (upscaling) - each sequence contributes to total
+                    # Estimate total sequences based on typical upscaling (3-4 iterations)
+                    estimated_sequences = 4
+                    sequence_weight = 100 / estimated_sequences
+                    
+                    # Current sequence progress
+                    current_seq_progress = (current / total) * sequence_weight
+                    # Previous sequences progress
+                    previous_seq_progress = self._current_step_sequence * sequence_weight
+                    
+                    self.percentage = min(95, previous_seq_progress + current_seq_progress)
+                
+                # Update phase for sampling
+                if self._current_step_sequence > 0:
+                    self.phase = f"Upscaling - Pass {self._current_step_sequence + 1} ({current}/{total})"
+                else:
+                    self.phase = f"Sampling ({current}/{total})"
+                    
+                # Track progress for time estimation
+                current_time = time.time()
+                self._progress_history.append((current_time, self.percentage))
+                # Keep only last 10 data points
+                if len(self._progress_history) > 10:
+                    self._progress_history.pop(0)
+                    
+                self._last_update_time = current_time
                 
     def estimate_time_remaining(self):
         """Estimate time remaining based on progress history."""
-        if len(self._progress_history) < 2 or self.percentage <= 5:
+        if len(self._progress_history) < 2 or self.percentage <= 0:
             # Not enough data for estimation
             self.estimated_time_remaining = None
             return None
@@ -235,10 +240,9 @@ class ProgressInfo:
             if self._current_step > 0 and self._total_steps > 0:
                 description += f"\n🎯 Step: {self._current_step}/{self._total_steps}"
                 
-            # Show node progress
-            total_processed = len(self._executed_nodes) + len(self._cached_nodes)
-            if self._total_nodes > 0:
-                description += f"\n🔗 Nodes: {total_processed}/{self._total_nodes}"
+                # Show sequence info for multi-iteration workflows
+                if self._current_step_sequence > 0:
+                    description += f" (Pass {self._current_step_sequence + 1})"
                 
             color = 0x3498DB  # Blue
             
@@ -436,18 +440,74 @@ class ImageGenerator:
             self.logger.error(f"Failed to update workflow parameters: {e}")
             raise ComfyUIAPIError(f"Failed to update workflow parameters: {e}")
     
-    async def _queue_prompt(self, workflow: Dict[str, Any]) -> str:
-        """Queue a prompt for generation in ComfyUI."""
+    async def _queue_prompt(self, workflow: Dict[str, Any]) -> Tuple[str, str]:
+        """Queue a prompt for generation in ComfyUI and return prompt_id and client_id."""
         try:
             # Use queue lock to prevent concurrent queuing conflicts
             async with self._queue_lock:
-                client_id = str(uuid.uuid4())
+                # First, try to connect to WebSocket to get the proper client_id from ComfyUI
+                client_id = None
+                try:
+                    import websockets
+                    ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
+                    self.logger.info(f"🔌 Connecting to WebSocket to get client_id: {ws_url}")
+                    
+                    # Use shorter timeout for client_id retrieval
+                    async with asyncio.wait_for(websockets.connect(ws_url), timeout=5.0) as websocket:
+                        # Wait for the first status message to get the client_id
+                        message_count = 0
+                        while message_count < 10:  # Limit attempts to avoid infinite loop
+                            try:
+                                message = await asyncio.wait_for(websocket.recv(), timeout=3.0)
+                                message_count += 1
+                                
+                                if isinstance(message, str):
+                                    data = json.loads(message)
+                                    self.logger.debug(f"WebSocket message {message_count}: {data}")
+                                    
+                                    # Check for client_id in different possible locations
+                                    if data.get('type') == 'status' and 'sid' in data:
+                                        client_id = data['sid']
+                                        self.logger.info(f"🔑 Received client_id from ComfyUI: {client_id}")
+                                        break
+                                    elif 'client_id' in data:
+                                        client_id = data['client_id']
+                                        self.logger.info(f"🔑 Found client_id in message: {client_id}")
+                                        break
+                                    elif data.get('type') == 'status':
+                                        self.logger.debug(f"Status message without sid: {data}")
+                                        
+                            except asyncio.TimeoutError:
+                                self.logger.debug(f"No message received in 3s (attempt {message_count})")
+                                break
+                            except json.JSONDecodeError as e:
+                                self.logger.warning(f"JSON decode error in WebSocket message: {e}")
+                                continue
+                        
+                        if not client_id:
+                            self.logger.warning(f"⚠️ Could not extract client_id from {message_count} WebSocket messages")
+                        
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"⚠️ WebSocket connection timeout after 5s")
+                except Exception as ws_error:
+                    self.logger.warning(f"⚠️ WebSocket client_id fetch failed: {ws_error}")
+                
+                # Fallback to generating client_id if WebSocket fails
+                if not client_id:
+                    client_id = str(uuid.uuid4())
+                    self.logger.warning(f"⚠️ Using generated client_id as fallback: {client_id}")
+                
                 self.logger.info(f"🔄 Queuing prompt with client_id: {client_id}")
                 
                 prompt_data = {
                     "prompt": workflow,
                     "client_id": client_id
                 }
+                
+                # Debug: Log the request details
+                self.logger.info(f"🌐 Making POST request to: {self.base_url}/prompt")
+                self.logger.info(f"📦 Payload size: {len(json.dumps(prompt_data))} bytes")
+                self.logger.info(f"🔑 Using client_id: {client_id}")
                 
                 # Add timeout to prevent hanging
                 timeout = aiohttp.ClientTimeout(total=30)
@@ -457,20 +517,51 @@ class ImageGenerator:
                     timeout=timeout
                 ) as response:
                     self.logger.info(f"📋 Queue response status: {response.status}")
+                    self.logger.info(f"📋 Response headers: {dict(response.headers)}")
+                    
+                    # Get response text for debugging
+                    response_text = await response.text()
+                    self.logger.info(f"📋 Raw response: {response_text}")
                     
                     if response.status == 200:
-                        result = await response.json()
-                        self.logger.info(f"📋 Queue response: {str(result)[:100]}...")
-                        
-                        if 'prompt_id' in result:
-                            prompt_id = result['prompt_id']
-                            self.logger.info(f"✅ Successfully queued prompt with ID: {prompt_id}")
-                            return prompt_id
-                        else:
-                            raise ComfyUIAPIError(f"No prompt_id in response: {result}")
+                        try:
+                            result = json.loads(response_text)
+                            self.logger.info(f"📋 Parsed response: {result}")
+                            
+                            if 'prompt_id' in result:
+                                prompt_id = result['prompt_id']
+                                self.logger.info(f"✅ Successfully queued prompt with ID: {prompt_id}")
+                                
+                                # Verify the prompt actually got queued by checking ComfyUI queue
+                                try:
+                                    async with self.session.get(f"{self.base_url}/queue") as queue_response:
+                                        if queue_response.status == 200:
+                                            queue_data = await queue_response.json()
+                                            
+                                            # Check if our prompt is in the queue
+                                            found_in_queue = False
+                                            for item in queue_data.get('queue_pending', []) + queue_data.get('queue_running', []):
+                                                if isinstance(item, list) and len(item) >= 2 and item[1] == prompt_id:
+                                                    found_in_queue = True
+                                                    break
+                                            
+                                            if found_in_queue:
+                                                self.logger.info(f"✅ Verified prompt {prompt_id} is in ComfyUI queue")
+                                            else:
+                                                self.logger.warning(f"⚠️ Prompt {prompt_id} NOT found in ComfyUI queue!")
+                                                self.logger.warning(f"⚠️ Queue state: {queue_data}")
+                                        else:
+                                            self.logger.warning(f"⚠️ Could not verify queue status: {queue_response.status}")
+                                except Exception as verify_error:
+                                    self.logger.warning(f"⚠️ Error verifying queue: {verify_error}")
+                                
+                                return prompt_id, client_id
+                            else:
+                                raise ComfyUIAPIError(f"No prompt_id in response: {result}")
+                        except json.JSONDecodeError as json_error:
+                            raise ComfyUIAPIError(f"Invalid JSON response: {response_text}, error: {json_error}")
                     else:
-                        error_text = await response.text()
-                        raise ComfyUIAPIError(f"Failed to queue prompt: {response.status} - {error_text}")
+                        raise ComfyUIAPIError(f"Failed to queue prompt: {response.status} - {response_text}")
                         
         except asyncio.TimeoutError:
             raise ComfyUIAPIError("Timeout while queuing prompt - ComfyUI may be overloaded")
@@ -481,10 +572,11 @@ class ImageGenerator:
     async def _wait_for_completion_with_websocket(
         self, 
         prompt_id: str, 
+        client_id: str,
         workflow: Dict[str, Any],
         progress_callback: Optional[Callable[[ProgressInfo], None]] = None
     ) -> Dict[str, Any]:
-        """Wait for prompt completion using WebSocket for real-time progress."""
+        """Wait for prompt completion using enhanced HTTP polling (WebSocket as secondary)."""
         try:
             progress = ProgressInfo()
             progress.set_workflow_nodes(workflow)
@@ -493,273 +585,336 @@ class ImageGenerator:
             if progress_callback:
                 await progress_callback(progress)
             
-            # Try WebSocket first for better real-time tracking
-            self.logger.info(f"Using WebSocket method for prompt {prompt_id}")
-            return await self._wait_for_completion_websocket(prompt_id, progress_callback, progress)
+            # Use enhanced HTTP polling as primary method (more reliable)
+            self.logger.info(f"Using enhanced HTTP polling for prompt {prompt_id} with client_id {client_id}")
+            return await self._wait_for_completion_polling_enhanced(prompt_id, client_id, progress_callback, progress)
                 
         except Exception as e:
-            self.logger.error(f"Error in WebSocket progress monitoring: {e}")
-            # Fallback to polling method
-            return await self._wait_for_completion_polling(prompt_id, progress_callback)
+            self.logger.error(f"Error in progress monitoring: {e}")
+            raise ComfyUIAPIError(f"Failed to monitor generation progress: {e}")
     
-    async def _wait_for_completion_websocket(self, prompt_id: str, progress_callback=None, progress: ProgressInfo = None) -> Dict[str, Any]:
-        """Enhanced WebSocket method with real-time node execution tracking."""
+    async def _track_websocket_progress(self, ws_url: str, prompt_id: str, client_id: str, progress_data: dict):
+        """Background task to track node-level progress via WebSocket."""
         try:
             import websockets
-            import json
             
-            # Connect to WebSocket
-            client_id = str(uuid.uuid4())
-            ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws?clientId={client_id}"
+            # Use the client_id we got from ComfyUI for WebSocket connection
+            full_ws_url = f"{ws_url}?clientId={client_id}"
+            self.logger.info(f"📡 Connecting to WebSocket with ComfyUI client_id: {full_ws_url}")
             
-            self.logger.info(f"Connecting to WebSocket: {ws_url}")
-            
-            async with websockets.connect(ws_url) as websocket:
-                last_update_time = time.time()
-                execution_started = False
+            async with websockets.connect(full_ws_url) as websocket:
+                self.logger.info(f"📡 WebSocket connected for node tracking prompt {prompt_id}")
                 
                 while True:
                     try:
-                        # Set a timeout for receiving messages
-                        message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                        message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
                         
                         if isinstance(message, str):
                             data = json.loads(message)
                             message_type = data.get('type')
                             message_data = data.get('data', {})
                             
-                            if message_type == 'status':
-                                # Queue status updates - only show queued if NOT executing and queue > 0
-                                status_data = message_data.get('status', {})
-                                exec_info = status_data.get('exec_info', {})
-                                queue_remaining = exec_info.get('queue_remaining', 0)
-                                
-                                if queue_remaining > 0 and not execution_started:
-                                    # Only update queue status if we haven't started executing yet
-                                    progress.update_queue_status(queue_remaining)
-                                    self.logger.debug(f"Queue status: {queue_remaining} remaining, execution_started: {execution_started}")
-                                    
-                            elif message_type == 'execution_start':
-                                # Execution started for our prompt
-                                if message_data.get('prompt_id') == prompt_id:
-                                    execution_started = True
-                                    progress.update_execution_start()
-                                    self.logger.info(f"Execution started for prompt {prompt_id}")
-                                    
+                            # Log ALL WebSocket messages for debugging
+                            self.logger.info(f"📡 WebSocket message: type={message_type}, data={message_data}")
+                            
+                            # Handle progress messages (K-Sampler steps) - NO prompt_id filter needed for progress
+                            if message_type == 'progress':
+                                current_step = message_data.get('value', 0)
+                                max_steps = message_data.get('max', 0)
+                                progress_data['step_current'] = current_step
+                                progress_data['step_total'] = max_steps
+                                progress_data['last_websocket_update'] = time.time()
+                                self.logger.info(f"📈 Step progress: {current_step}/{max_steps}")
+                            
+                            # Handle execution cached (nodes skipped due to caching)
                             elif message_type == 'execution_cached':
-                                # Some nodes were cached (skipped)
+                                # Check if it's for our prompt
                                 if message_data.get('prompt_id') == prompt_id:
                                     cached_nodes = message_data.get('nodes', [])
-                                    progress.update_cached_nodes(cached_nodes)
-                                    self.logger.debug(f"Cached {len(cached_nodes)} nodes")
-                                    
+                                    progress_data['cached_nodes'] = cached_nodes
+                                    progress_data['last_websocket_update'] = time.time()
+                                    self.logger.info(f"💾 Cached nodes for {prompt_id}: {cached_nodes}")
+                                else:
+                                    self.logger.debug(f"💾 Ignoring cached nodes for different prompt: {message_data.get('prompt_id')}")
+                            
+                            # Handle node execution
                             elif message_type == 'executing':
-                                # Node execution updates - only process for our prompt
+                                # Check if it's for our prompt
                                 if message_data.get('prompt_id') == prompt_id:
                                     node_id = message_data.get('node')
-                                    
-                                    if node_id is None:
-                                        # Execution completed
-                                        progress.mark_completed()
-                                        if progress_callback:
-                                            await progress_callback(progress)
-                                        break
+                                    if node_id is not None:
+                                        progress_data['current_node'] = str(node_id)
+                                        progress_data['last_websocket_update'] = time.time()
+                                        self.logger.info(f"🔧 Node executing for {prompt_id}: {node_id}")
                                     else:
-                                        # Node started executing
-                                        execution_started = True  # Make sure we're marked as running
-                                        progress.update_node_execution(node_id)
-                                        self.logger.debug(f"Executing node: {node_id}")
-                                        
-                            elif message_type == 'progress':
-                                # Step progress (e.g., KSampler steps) - only if we're executing
-                                if execution_started:
-                                    current_step = message_data.get('value', 0)
-                                    max_steps = message_data.get('max', 0)
-                                    progress.update_step_progress(current_step, max_steps)
-                                    self.logger.debug(f"Step progress: {current_step}/{max_steps}")
-                                
-                            elif message_type == 'executed':
-                                # Node execution completed - only process for our prompt
-                                if message_data.get('prompt_id') == prompt_id:
-                                    node_id = message_data.get('node')
-                                    self.logger.debug(f"Node {node_id} completed")
-                                
-                            # Send progress updates every second
-                            current_time = time.time()
-                            if progress_callback and (current_time - last_update_time >= 1.0):
-                                await progress_callback(progress)
-                                last_update_time = current_time
+                                        # node_id is None means execution completed
+                                        self.logger.info(f"✅ WebSocket detected completion for prompt {prompt_id}")
+                                        break
+                                else:
+                                    self.logger.debug(f"🔧 Ignoring node execution for different prompt: {message_data.get('prompt_id')}")
+                            
+                            # Also track general status updates for fallback
+                            elif message_type == 'status':
+                                status_data = message_data.get('status', {})
+                                if 'exec_info' in status_data:
+                                    exec_info = status_data['exec_info']
+                                    progress_data['queue_remaining'] = exec_info.get('queue_remaining', 0)
+                                    progress_data['last_websocket_update'] = time.time()
+                                    self.logger.info(f"📊 Status update: queue_remaining={exec_info.get('queue_remaining', 0)}")
                                 
                     except asyncio.TimeoutError:
-                        # No message received within timeout, check if we should send progress update
-                        current_time = time.time()
-                        if progress_callback and (current_time - last_update_time >= 1.0):
-                            await progress_callback(progress)
-                            last_update_time = current_time
-                            
-                        # Check if execution is complete via HTTP as fallback
-                        try:
-                            async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
-                                if response.status == 200:
-                                    response_text = await response.text()
-                                    if response_text and response_text.strip():
-                                        history_data = await response.json()
-                                        if history_data and prompt_id in history_data:
-                                            prompt_data = history_data[prompt_id]
-                                            if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
-                                                progress.mark_completed()
-                                                if progress_callback:
-                                                    await progress_callback(progress)
-                                                return prompt_data
-                        except Exception:
-                            pass
-                            
-            # If we reach here, WebSocket closed unexpectedly
-            raise Exception("WebSocket connection closed unexpectedly")
-            
+                        # No message received in timeout period - this is normal
+                        continue
+                    except json.JSONDecodeError as e:
+                        self.logger.warning(f"WebSocket JSON decode error: {e}")
+                        continue
+                        
         except Exception as e:
-            self.logger.error(f"WebSocket error: {e}")
-            # Fallback to polling
-            return await self._wait_for_completion_polling(prompt_id, progress_callback)
+            self.logger.info(f"WebSocket node tracking ended: {e}")
+        finally:
+            self.logger.info(f"📡 WebSocket node tracking task ended for prompt {prompt_id}")
     
-    async def _wait_for_completion_polling(self, prompt_id: str, progress_callback=None) -> Dict[str, Any]:
-        """Simplified polling method with proper queue status detection."""
+    async def _wait_for_completion_polling_enhanced(self, prompt_id: str, client_id: str, progress_callback=None, progress: ProgressInfo = None) -> Dict[str, Any]:
+        """Enhanced HTTP polling method with optional WebSocket node tracking."""
         try:
-            max_wait_time = self.config.comfyui.timeout
-            check_interval = 1.0  # Check every 1 second for faster updates
-            start_time = time.time()
+            # Dynamic timeout based on expected generation type
+            base_timeout = self.config.comfyui.timeout
+            # For video workflows, use longer timeout (10 minutes)
+            workflow_json = json.dumps(progress._workflow_data)
+            if "VideoLinearCFGGuidance" in workflow_json or "I2VGenXLPipeline" in workflow_json:
+                max_wait_time = 600  # 10 minutes for video
+                self.logger.info(f"Using extended timeout for video generation: {max_wait_time}s")
+            else:
+                max_wait_time = base_timeout  # Default for images
             
-            progress = ProgressInfo()
+            # Always use 1-second polling for accurate progress tracking
+            check_interval = 1.0
+            start_time = time.time()
             last_update_time = time.time()
             execution_started = False
+            last_status = None
+            last_progress_sent = 0.0
+            progress_update_count = 0
             
-            self.logger.info(f"Starting polling for prompt {prompt_id}")
+            # Try to establish WebSocket for node-level tracking (optional)
+            websocket_task = None
+            websocket_progress = {}
+            
+            try:
+                import websockets
+                ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
+                self.logger.info(f"📡 Starting WebSocket tracking with client_id: {client_id}")
+                websocket_task = asyncio.create_task(self._track_websocket_progress(ws_url, prompt_id, client_id, websocket_progress))
+            except Exception as ws_error:
+                self.logger.warning(f"WebSocket unavailable for node tracking: {ws_error}")
+            
+            self.logger.info(f"Starting enhanced polling for prompt {prompt_id} (timeout: {max_wait_time}s, interval: 1s)")
             
             while time.time() - start_time < max_wait_time:
+                current_time = time.time()
+                
                 # Check history first for completion
                 try:
                     async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                         if response.status == 200:
-                            try:
-                                response_text = await response.text()
-                                if response_text and response_text.strip():
-                                    history_data = await response.json()
-                                    
-                                    if history_data and isinstance(history_data, dict) and prompt_id in history_data:
-                                        prompt_data = history_data[prompt_id]
-                                        if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
-                                            # Mark as completed and return
-                                            progress.mark_completed()
-                                            if progress_callback:
-                                                try:
-                                                    await progress_callback(progress)
-                                                except Exception:
-                                                    pass
-                                            return prompt_data
+                            response_text = await response.text()
+                            if response_text and response_text.strip():
+                                history_data = await response.json()
+                                if history_data and isinstance(history_data, dict) and prompt_id in history_data:
+                                    prompt_data = history_data[prompt_id]
+                                    if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
+                                        # Generation completed!
+                                        progress.mark_completed()
+                                        if progress_callback:
+                                            await progress_callback(progress)
                                         
-                            except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
-                                self.logger.debug(f"Invalid JSON in history response: {json_error}")
-                        else:
-                            self.logger.debug(f"History endpoint returned status {response.status}")
+                                        # Clean up WebSocket task
+                                        if websocket_task:
+                                            websocket_task.cancel()
+                                            
+                                        self.logger.info(f"✅ Generation completed for prompt {prompt_id}")
+                                        self.logger.info(f"📊 Total progress updates sent: {progress_update_count}")
+                                        return prompt_data
                 except Exception as e:
-                    if (time.time() - start_time) % 30 < check_interval:
-                        self.logger.warning(f"Error checking history: {e}")
+                    self.logger.debug(f"History check error: {e}")
                 
-                # Check ComfyUI queue status for proper status reporting
+                # Check queue status for accurate progress reporting
                 try:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
-                            try:
-                                response_text = await response.text()
-                                if response_text and response_text.strip():
-                                    queue_data = await response.json()
+                            response_text = await response.text()
+                            if response_text and response_text.strip():
+                                queue_data = await response.json()
+                                
+                                if queue_data and isinstance(queue_data, dict):
+                                    queue_running = queue_data.get('queue_running', [])
+                                    queue_pending = queue_data.get('queue_pending', [])
                                     
-                                    if queue_data and isinstance(queue_data, dict):
-                                        queue_running = queue_data.get('queue_running', [])
-                                        queue_pending = queue_data.get('queue_pending', [])
+                                    # Check if our prompt is actively running
+                                    is_running = False
+                                    for item in queue_running:
+                                        try:
+                                            if isinstance(item, list) and len(item) >= 2:
+                                                if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
+                                                    is_running = True
+                                                    break
+                                        except (AttributeError, TypeError, KeyError):
+                                            continue
+                                    
+                                    # Check if prompt is in pending queue
+                                    queue_position = None
+                                    for i, item in enumerate(queue_pending):
+                                        try:
+                                            if isinstance(item, list) and len(item) >= 2:
+                                                if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
+                                                    queue_position = i + 1
+                                                    break
+                                        except (AttributeError, TypeError, KeyError):
+                                            continue
+                                    
+                                    # Update progress based on ACTUAL queue state
+                                    if queue_position is not None:
+                                        # Prompt is genuinely queued
+                                        if progress.status != "queued" or progress.queue_position != queue_position:
+                                            progress.update_queue_status(queue_position)
+                                            self.logger.info(f"Prompt {prompt_id} is in queue position #{queue_position}")
+                                            last_status = f"queued #{queue_position}"
+                                    elif is_running:
+                                        # Prompt is actively running
+                                        if not execution_started:
+                                            execution_started = True
+                                            progress.update_execution_start()
+                                            self.logger.info(f"Prompt {prompt_id} execution started")
+                                            last_status = "running"
                                         
-                                        # Check if our prompt is currently running
-                                        is_running = False
-                                        if isinstance(queue_running, list):
-                                            for item in queue_running:
-                                                try:
-                                                    # ComfyUI queue format: [number, {prompt_id: ...}]
-                                                    if isinstance(item, list) and len(item) >= 2:
-                                                        if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
-                                                            is_running = True
-                                                            break
-                                                except (AttributeError, TypeError, KeyError):
-                                                    continue
-                                        
-                                        if is_running:
-                                            # Prompt is actively running - NOT queued
-                                            if not execution_started:
-                                                execution_started = True
-                                                progress.update_execution_start()
-                                                progress.phase = "Generating"
-                                                self.logger.info(f"Prompt {prompt_id} is now running")
-                                        else:
-                                            # Check if prompt is in pending queue
-                                            queue_position = None
-                                            if isinstance(queue_pending, list):
-                                                for i, item in enumerate(queue_pending):
-                                                    try:
-                                                        # ComfyUI queue format: [number, {prompt_id: ...}]
-                                                        if isinstance(item, list) and len(item) >= 2:
-                                                            if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
-                                                                queue_position = i + 1
-                                                                break
-                                                    except (AttributeError, TypeError, KeyError):
-                                                        continue
+                                        # Use WebSocket node data if available and recent
+                                        websocket_data_age = current_time - websocket_progress.get('last_websocket_update', 0)
+                                        if websocket_progress and websocket_data_age < 10.0:  # Use WebSocket data if less than 10 seconds old
+                                            # Apply WebSocket node tracking data
+                                            old_percentage = progress.percentage
                                             
-                                            if queue_position is not None and not execution_started:
-                                                # Prompt is genuinely queued and hasn't started yet
-                                                if progress.status != "queued" or progress.queue_position != queue_position:
-                                                    progress.update_queue_status(queue_position)
-                                                    self.logger.info(f"Prompt {prompt_id} is #{queue_position} in queue")
-                                            elif execution_started:
-                                                # We were running but not found in queue - probably generating
-                                                if progress.status == "queued":
-                                                    progress.update_execution_start()
-                                                    progress.phase = "Generating"
-                                        
-                                        # Send progress update every second
-                                        current_time = time.time()
-                                        if progress_callback and (current_time - last_update_time >= 1.0):
-                                            try:
-                                                await progress_callback(progress)
-                                                last_update_time = current_time
-                                            except Exception:
-                                                pass
+                                            if 'current_node' in websocket_progress:
+                                                progress.update_node_execution(websocket_progress['current_node'])
                                                 
-                            except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
-                                self.logger.debug(f"Invalid JSON in queue response: {json_error}")
-                        else:
-                            self.logger.debug(f"Queue endpoint returned status {response.status}")
-                            
-                except Exception as e:
-                    if (time.time() - start_time) % 30 < check_interval:
-                        self.logger.warning(f"Error checking queue: {e}")
+                                            if 'cached_nodes' in websocket_progress:
+                                                progress.update_cached_nodes(websocket_progress['cached_nodes'])
+                                                
+                                            if 'step_current' in websocket_progress and 'step_total' in websocket_progress:
+                                                progress.update_step_progress(
+                                                    websocket_progress['step_current'], 
+                                                    websocket_progress['step_total']
+                                                )
+                                                
+                                            self.logger.info(f"📊 Applied WebSocket data: node={websocket_progress.get('current_node')}, steps={websocket_progress.get('step_current')}/{websocket_progress.get('step_total')}, progress: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
+                                        else:
+                                            # Fallback to time-based estimation if no WebSocket data or data is stale
+                                            elapsed = current_time - progress.start_time
+                                            if elapsed > 10:  # After 10 seconds, start showing progress
+                                                # Rough estimate based on generation type
+                                                if "video" in str(progress._workflow_data).lower():
+                                                    estimated_total = 180  # 3 minutes average for video
+                                                else:
+                                                    estimated_total = 45   # 45 seconds average for image
+                                                
+                                                estimated_progress = min(85, (elapsed / estimated_total) * 100)
+                                                if estimated_progress > progress.percentage:
+                                                    old_percentage = progress.percentage
+                                                    progress.percentage = estimated_progress
+                                                    if progress.percentage < 30:
+                                                        progress.phase = "Processing prompt"
+                                                    elif progress.percentage < 60:
+                                                        progress.phase = "Generating image"
+                                                    else:
+                                                        progress.phase = "Refining details"
+                                                    self.logger.info(f"📊 Time-based estimate: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
+                                    else:
+                                        # Not in queue and not running - check if we have WebSocket activity
+                                        if not execution_started and websocket_progress and 'step_current' in websocket_progress:
+                                            # We have WebSocket activity but HTTP polling doesn't see it as running
+                                            # This can happen during the brief transition period
+                                            execution_started = True
+                                            progress.update_execution_start()
+                                            self.logger.info(f"Prompt {prompt_id} execution detected via WebSocket activity")
+                                            last_status = "running (WebSocket detected)"
+                                            
+                                        # Apply WebSocket data if we have execution activity
+                                        if execution_started and websocket_progress:
+                                            websocket_data_age = current_time - websocket_progress.get('last_websocket_update', 0)
+                                            if websocket_data_age < 10.0:  # Use WebSocket data if less than 10 seconds old
+                                                old_percentage = progress.percentage
+                                                
+                                                if 'current_node' in websocket_progress:
+                                                    progress.update_node_execution(websocket_progress['current_node'])
+                                                    
+                                                if 'cached_nodes' in websocket_progress:
+                                                    progress.update_cached_nodes(websocket_progress['cached_nodes'])
+                                                    
+                                                if 'step_current' in websocket_progress and 'step_total' in websocket_progress:
+                                                    progress.update_step_progress(
+                                                        websocket_progress['step_current'], 
+                                                        websocket_progress['step_total']
+                                                    )
+                                                    
+                                                self.logger.info(f"📊 Applied WebSocket data (no HTTP queue): node={websocket_progress.get('current_node')}, steps={websocket_progress.get('step_current')}/{websocket_progress.get('step_total')}, progress: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
+                                        
+                                        # Check if execution completed but was missed by queue status
+                                        if execution_started and last_status == "running":
+                                            # Was running, now not found - likely completed
+                                            self.logger.info(f"Prompt {prompt_id} no longer in queue - checking completion")
+                                        elif not execution_started:
+                                            # Never started, might be an error or very fast execution
+                                            progress.phase = "Checking status..."
                 
-                # Wait before next check
+                except Exception as e:
+                    self.logger.debug(f"Queue check error: {e}")
+                
+                # Send progress updates more frequently - every second, and with smaller thresholds
+                if progress_callback and (current_time - last_update_time >= check_interval):
+                    progress_change = abs(progress.percentage - last_progress_sent)
+                    # Lower threshold: update if 0.5% change, queued status, or every 5 seconds
+                    time_since_last = current_time - last_update_time
+                    should_update = (
+                        progress_change >= 0.5 or 
+                        progress.status == "queued" or 
+                        time_since_last >= 5.0 or
+                        execution_started and time_since_last >= 2.0  # More frequent updates when running
+                    )
+                    
+                    if should_update:
+                        try:
+                            self.logger.info(f"📤 Sending progress update: {progress.percentage:.1f}%, status={progress.status}, phase={progress.phase}")
+                            await progress_callback(progress)
+                            last_update_time = current_time
+                            last_progress_sent = progress.percentage
+                            progress_update_count += 1
+                        except Exception as e:
+                            self.logger.warning(f"Progress callback error: {e}")
+                
+                # Wait before next check (1 second)
                 await asyncio.sleep(check_interval)
                 
-                # Log progress every 30 seconds only
-                elapsed = time.time() - start_time
-                if elapsed % 30 < check_interval and elapsed > 30:
-                    status_info = f"Status: {progress.status}"
-                    if progress.status == "queued":
-                        status_info += f" (#{progress.queue_position})"
-                    elif progress.status == "running":
-                        status_info += f" (executing)"
-                    self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s elapsed) - {status_info}")
+                # Log progress periodically (every 15 seconds for more frequent feedback)
+                elapsed = current_time - start_time
+                if elapsed % 15 < check_interval and elapsed > 15:
+                    status_msg = f"Status: {last_status or 'unknown'}"
+                    if websocket_progress:
+                        ws_age = current_time - websocket_progress.get('last_websocket_update', 0)
+                        status_msg += f" | WebSocket: {len(websocket_progress)} data points (age: {ws_age:.1f}s)"
+                    status_msg += f" | Updates sent: {progress_update_count}"
+                    self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s) - {status_msg}")
+            
+            # Clean up WebSocket task
+            if websocket_task:
+                websocket_task.cancel()
             
             # Timeout reached
-            raise ComfyUIAPIError(f"Timeout waiting for prompt {prompt_id} after {max_wait_time} seconds")
+            elapsed = time.time() - start_time
+            self.logger.error(f"Timeout waiting for prompt {prompt_id} after {elapsed:.0f} seconds")
+            raise ComfyUIAPIError(f"Generation timeout after {max_wait_time} seconds - this may indicate ComfyUI is overloaded")
             
         except Exception as e:
-            if "Timeout" not in str(e):
-                self.logger.error(f"Error in polling method: {e}")
+            if "timeout" not in str(e).lower():
+                self.logger.error(f"Error in enhanced polling: {e}")
             raise
     
     async def _download_images(self, history: Dict[str, Any]) -> List[bytes]:
@@ -965,10 +1120,10 @@ class ImageGenerator:
             )
             
             # Queue prompt
-            prompt_id = await self._queue_prompt(updated_workflow)
+            prompt_id, client_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, client_id, updated_workflow, progress_callback)
             
             # Download images - return as individual images, not collage
             images = await self._download_images(history)
@@ -1080,10 +1235,10 @@ class ImageGenerator:
             )
             
             # Queue prompt
-            prompt_id = await self._queue_prompt(updated_workflow)
+            prompt_id, client_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, client_id, updated_workflow, progress_callback)
             
             # Download upscaled image
             images = await self._download_images(history)
