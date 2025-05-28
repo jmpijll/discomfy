@@ -274,11 +274,11 @@ class ComfyUIBot(commands.Bot):
 @app_commands.describe(
     prompt="The prompt for image generation",
     model="Choose the AI model to use (default: Flux)",
-    negative_prompt="Negative prompt (things to avoid)",
-    width="Image width (default: 1024)",
-    height="Image height (default: 1024)", 
-    steps="Number of sampling steps (auto-defaults per model)",
-    cfg="CFG scale (default: 5.0)",
+    negative_prompt="Negative prompt (things to avoid - leave empty for model defaults)",
+    width="Image width (leave empty for model defaults)",
+    height="Image height (leave empty for model defaults)", 
+    steps="Number of sampling steps (leave empty for model defaults)",
+    cfg="CFG scale (leave empty for model defaults)",
     batch_size="Number of images to generate (default: 1)",
     seed="Random seed (leave empty for random)"
 )
@@ -292,11 +292,11 @@ async def generate_command(
     interaction: discord.Interaction,
     prompt: str,
     model: str = "flux",
-    negative_prompt: str = "",
-    width: int = 1024,
-    height: int = 1024,
+    negative_prompt: Optional[str] = None,
+    width: Optional[int] = None,
+    height: Optional[int] = None,
     steps: Optional[int] = None,
-    cfg: float = 5.0,
+    cfg: Optional[float] = None,
     batch_size: int = 1,
     seed: Optional[int] = None
 ):
@@ -313,7 +313,7 @@ async def generate_command(
             )
             return
         
-        # Validate inputs (same validation as before)
+        # Validate inputs
         if not prompt.strip():
             await bot._send_error_embed(
                 interaction,
@@ -338,25 +338,6 @@ async def generate_command(
             )
             return
         
-        # Validate dimensions
-        if width < 256 or width > 2048 or height < 256 or height > 2048:
-            await bot._send_error_embed(
-                interaction,
-                "Invalid Dimensions",
-                "Width and height must be between 256 and 2048 pixels."
-            )
-            return
-        
-        # Set default steps based on model if not specified
-        if steps is None:
-            # Model-specific defaults
-            if model == "flux":
-                steps = 30
-            elif model == "hidream":
-                steps = 50
-            else:
-                steps = 30  # fallback default
-        
         # Determine workflow based on model and validate it exists
         workflow_name = f"{model}_lora"
         workflow_config = bot.config.workflows.get(workflow_name)
@@ -369,7 +350,38 @@ async def generate_command(
             )
             return
         
-        # Validate steps
+        # Apply model-specific defaults for parameters not provided by user
+        if model == "flux":
+            # Flux defaults
+            if width is None: width = 1024
+            if height is None: height = 1024
+            if steps is None: steps = 30
+            if cfg is None: cfg = 5.0
+            if negative_prompt is None: negative_prompt = ""
+        elif model == "hidream":
+            # HiDream defaults
+            if width is None: width = 1216
+            if height is None: height = 1216
+            if steps is None: steps = 50
+            if cfg is None: cfg = 7.0
+            if negative_prompt is None: negative_prompt = "bad ugly jpeg artifacts"
+        else:
+            # Fallback defaults
+            if width is None: width = 1024
+            if height is None: height = 1024
+            if steps is None: steps = 30
+            if cfg is None: cfg = 5.0
+            if negative_prompt is None: negative_prompt = ""
+        
+        # Validate parameters after applying defaults
+        if width < 256 or width > 2048 or height < 256 or height > 2048:
+            await bot._send_error_embed(
+                interaction,
+                "Invalid Dimensions",
+                "Width and height must be between 256 and 2048 pixels."
+            )
+            return
+        
         if steps < 1 or steps > 150:
             await bot._send_error_embed(
                 interaction,
@@ -385,19 +397,6 @@ async def generate_command(
                 "CFG scale must be between 1.0 and 30.0."
             )
             return
-        
-        # Set model-specific defaults for dimensions and negative prompt
-        if model == "hidream" and width == 1024 and height == 1024:
-            # Use HiDream's preferred dimensions
-            width = 1216
-            height = 1216
-        
-        # Use model-specific default negative prompt if none provided
-        if not negative_prompt.strip():
-            if model == "hidream":
-                negative_prompt = "bad ugly jpeg artifacts"
-            else:
-                negative_prompt = ""  # Flux default is empty
         
         # Create interactive LoRA selection view
         await interaction.response.defer()
@@ -458,6 +457,7 @@ async def generate_command(
         
     except Exception as e:
         bot.logger.error(f"Unexpected error in generate command: {e}")
+        bot.logger.error(f"Traceback: {traceback.format_exc()}")
         try:
             await bot._send_error_embed(
                 interaction,
@@ -488,7 +488,8 @@ class GenerationSetupView(discord.ui.View):
         
         # Add LoRA selection dropdown if LoRAs are available
         if self.loras:
-            self.add_item(LoRASelectMenu(self.loras))
+            select_menu = LoRASelectMenu(self.loras)
+            self.add_item(select_menu)
             self.add_item(LoRAStrengthButton())
         
         # Add generation buttons
@@ -711,35 +712,62 @@ class LoRASelectMenu(discord.ui.Select):
     """Select menu for choosing LoRA."""
     
     def __init__(self, loras: list):
-        # Limit to 25 options (Discord limit)
-        display_loras = loras[:25]
-        
-        options = [
-            discord.SelectOption(
-                label=lora['display_name'][:100],  # Discord label limit
-                value=lora['filename'],
-                description=f"Filename: {lora['filename'][:50]}{'...' if len(lora['filename']) > 50 else ''}"
-            )
-            for lora in display_loras
-        ]
+        # Ensure we have valid LoRAs and limit to 25 options (Discord limit)
+        if not loras:
+            # Create a dummy option since Discord requires at least one
+            options = [discord.SelectOption(
+                label="No LoRAs available",
+                value="none",
+                description="No compatible LoRAs found for this model"
+            )]
+            disabled = True
+        else:
+            display_loras = loras[:25]  # Discord limit
+            options = []
+            
+            for lora in display_loras:
+                # Ensure we have valid lora data
+                filename = lora.get('filename', 'unknown.safetensors')
+                display_name = lora.get('display_name', filename)
+                
+                # Truncate label and description to Discord limits
+                label = display_name[:100] if display_name else filename[:100]
+                description = f"File: {filename[:50]}{'...' if len(filename) > 50 else ''}"
+                
+                options.append(discord.SelectOption(
+                    label=label,
+                    value=filename,
+                    description=description
+                ))
+            disabled = False
         
         super().__init__(
-            placeholder="🎯 Choose a LoRA...",
+            placeholder="🎯 Choose a LoRA..." if not disabled else "No LoRAs available",
             min_values=1,
             max_values=1,
-            options=options
+            options=options,
+            disabled=disabled
         )
     
     async def callback(self, interaction: discord.Interaction):
         """Handle LoRA selection."""
         view: GenerationSetupView = self.view
+        
+        # Handle the case where no LoRAs are available
+        if self.values[0] == "none":
+            await interaction.response.send_message(
+                "❌ No LoRAs are available for this model.",
+                ephemeral=True
+            )
+            return
+        
         view.selected_lora = self.values[0]
         
         # Find the display name for the selected LoRA
         selected_display_name = "Unknown"
         for lora in view.loras:
-            if lora['filename'] == view.selected_lora:
-                selected_display_name = lora['display_name']
+            if lora.get('filename') == view.selected_lora:
+                selected_display_name = lora.get('display_name', lora.get('filename', 'Unknown'))
                 break
         
         await interaction.response.send_message(
@@ -764,15 +792,16 @@ class LoRAStrengthButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         """Show modal to adjust LoRA strength."""
         view: GenerationSetupView = self.view
-        modal = LoRAStrengthModal(view.lora_strength)
+        modal = LoRAStrengthModal(view.lora_strength, view)
         await interaction.response.send_modal(modal)
 
 
 class LoRAStrengthModal(discord.ui.Modal):
     """Modal for adjusting LoRA strength."""
     
-    def __init__(self, current_strength: float):
+    def __init__(self, current_strength: float, view: 'GenerationSetupView'):
         super().__init__(title="Adjust LoRA Strength")
+        self.view = view
         self.strength_input = discord.ui.TextInput(
             label="LoRA Strength",
             placeholder="Enter a value between 0.0 and 2.0",
@@ -787,11 +816,8 @@ class LoRAStrengthModal(discord.ui.Modal):
         try:
             strength = float(self.strength_input.value)
             if 0.0 <= strength <= 2.0:
-                # Find the view in the original message
-                # This is a bit tricky since we're in a modal
-                view = interaction.message.view if hasattr(interaction, 'message') else None
-                if isinstance(view, GenerationSetupView):
-                    view.lora_strength = strength
+                # Update the view's lora_strength
+                self.view.lora_strength = strength
                 
                 await interaction.response.send_message(
                     f"✅ **LoRA strength updated to {strength}**\n" +
