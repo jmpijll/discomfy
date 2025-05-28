@@ -172,13 +172,20 @@ class VideoGenerator(ImageGenerator):
             # Use default video workflow if none specified
             if not workflow_name:
                 # Find first video workflow
+                video_workflow_found = False
                 for name, config in self.config.workflows.items():
-                    if config.type == 'video' and config.enabled:
+                    if hasattr(config, 'type') and config.type == 'video' and config.enabled:
                         workflow_name = name
+                        video_workflow_found = True
                         break
                 
+                # Fallback to hardcoded video workflow if none configured
+                if not video_workflow_found:
+                    workflow_name = "video_wan_vace_14B_i2v"
+                    self.logger.warning(f"No video workflow configured, using hardcoded fallback: {workflow_name}")
+                
                 if not workflow_name:
-                    raise ValueError("No video workflow available")
+                    raise ValueError("No video workflow available and no fallback found")
             
             self.logger.info(f"Starting video generation: '{prompt[:50]}...' (length: {length} frames)")
             

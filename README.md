@@ -28,6 +28,9 @@ This isn't just another AI bot - it's a complete creative powerhouse that brings
 - **📊 Real-time Progress**: Live progress updates during generation and processing
 - **🔧 Configurable Parameters**: Width, height, steps, CFG, batch size, seed control
 - **📁 Auto-cleanup**: Automatic management of output files (100 file limit)
+- **🔄 Queue Management**: Improved concurrent request handling
+- **⚡ Enhanced Error Handling**: Better Discord interaction timeout protection
+- **🚫 Null Safety**: Robust API response validation to prevent crashes
 
 ### 🚧 Coming Soon (Phase 4)
 - **🎯 LoRA Support**: Advanced model customization
@@ -236,6 +239,22 @@ After generation, use the buttons to:
 - Verify ComfyUI server is running and accessible
 - Ensure upscale and video workflows are properly configured
 - Check that required models are loaded in ComfyUI
+
+**Video generation errors ("WorkflowConfig object has no attribute 'type'")**
+- This issue has been fixed in the latest version
+- Ensure your `config.json` includes `type` field for all workflows
+- Restart the bot after updating configuration
+
+**Queue conflicts (multiple requests failing)**
+- The bot now includes improved queue management
+- Multiple users can safely use buttons simultaneously
+- Rate limiting prevents system overload
+- If issues persist, check ComfyUI system resources
+
+**Discord interaction timeouts ("Unknown interaction" errors)**
+- These errors have been reduced with better timeout handling
+- If you see this error, try the command again
+- The bot now gracefully handles expired interactions
 
 ## 📁 Project Structure
 ```

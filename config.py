@@ -50,8 +50,11 @@ class WorkflowConfig(BaseModel):
     file: str = Field(..., description="Workflow JSON filename")
     name: str = Field(..., description="Human-readable workflow name")
     description: str = Field("", description="Workflow description")
+    type: str = Field("image", description="Workflow type: image, video, upscale")
+    model_type: Optional[str] = Field(None, description="Model type: flux, hidream, etc.")
     parameters: Dict[str, str] = Field(default_factory=dict, description="Node ID mappings for parameters")
     enabled: bool = Field(True, description="Whether this workflow is enabled")
+    supports_lora: bool = Field(False, description="Whether this workflow supports LoRA")
 
 class LoggingConfig(BaseModel):
     """Logging configuration."""
