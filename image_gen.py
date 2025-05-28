@@ -52,21 +52,22 @@ class ProgressInfo:
         self._total_nodes = len(self._workflow_nodes)
         
     def update_queue_status(self, position: int):
-        """Update queue position."""
+        """Update queue position - only when genuinely queued."""
         self.status = "queued"
         self.queue_position = position
         self.phase = f"In queue (#{position})"
         self.percentage = 0.0
         
     def update_execution_start(self):
-        """Update when execution starts."""
-        self.status = "running"
-        self.queue_position = 0
-        self._execution_started = True
-        self.start_time = time.time()
-        self._last_update_time = time.time()
-        self.phase = "Starting generation"
-        self.percentage = 5.0  # Show some initial progress
+        """Update when execution starts - switches from queued to running."""
+        if self.status != "running":  # Only log the transition once
+            self.status = "running"
+            self.queue_position = 0  # Clear queue position when running
+            self._execution_started = True
+            self.start_time = time.time()  # Reset start time for accurate elapsed time
+            self._last_update_time = time.time()
+            self.phase = "Starting generation"
+            self.percentage = 5.0  # Show some initial progress
         
     def update_cached_nodes(self, cached_nodes: list):
         """Update when nodes are cached (execution skipped)."""
@@ -212,8 +213,8 @@ class ProgressInfo:
         elapsed_str = self.format_time(elapsed)
         
         if self.status == "queued":
-            title = "⏳ In Queue"
-            description = f"📍 Position #{self.queue_position} in queue\n⏱️ Elapsed: {elapsed_str}\n🔄 Waiting to start..."
+            title = "⏳ Queued"
+            description = f"📍 Position #{self.queue_position} in queue\n⏱️ Waiting time: {elapsed_str}\n🔄 Waiting for ComfyUI to start processing..."
             color = 0xFFA500  # Orange
             
         elif self.status == "running":
@@ -248,8 +249,8 @@ class ProgressInfo:
             color = 0x2ECC71  # Green
             
         else:  # initializing or other
-            title = "🔄 Starting"
-            description = f"⚙️ {self.phase}...\n⏱️ Elapsed: {elapsed_str}"
+            title = "🔄 Preparing"
+            description = f"⚙️ {self.phase}...\n⏱️ Elapsed: {elapsed_str}\n📝 Setting up workflow..."
             color = 0x3498DB  # Blue
             
         return title, description, color
@@ -515,6 +516,7 @@ class ImageGenerator:
             
             async with websockets.connect(ws_url) as websocket:
                 last_update_time = time.time()
+                execution_started = False
                 
                 while True:
                     try:
@@ -523,34 +525,38 @@ class ImageGenerator:
                         
                         if isinstance(message, str):
                             data = json.loads(message)
+                            message_type = data.get('type')
+                            message_data = data.get('data', {})
                             
-                            if data.get('type') == 'status':
-                                # Queue status updates
-                                status_data = data.get('data', {}).get('status', {})
+                            if message_type == 'status':
+                                # Queue status updates - only show queued if NOT executing and queue > 0
+                                status_data = message_data.get('status', {})
                                 exec_info = status_data.get('exec_info', {})
                                 queue_remaining = exec_info.get('queue_remaining', 0)
                                 
-                                if queue_remaining > 0 and progress.status != "running":
+                                if queue_remaining > 0 and not execution_started:
+                                    # Only update queue status if we haven't started executing yet
                                     progress.update_queue_status(queue_remaining)
+                                    self.logger.debug(f"Queue status: {queue_remaining} remaining, execution_started: {execution_started}")
                                     
-                            elif data.get('type') == 'execution_start':
-                                # Execution started
-                                if data.get('data', {}).get('prompt_id') == prompt_id:
+                            elif message_type == 'execution_start':
+                                # Execution started for our prompt
+                                if message_data.get('prompt_id') == prompt_id:
+                                    execution_started = True
                                     progress.update_execution_start()
                                     self.logger.info(f"Execution started for prompt {prompt_id}")
                                     
-                            elif data.get('type') == 'execution_cached':
+                            elif message_type == 'execution_cached':
                                 # Some nodes were cached (skipped)
-                                if data.get('data', {}).get('prompt_id') == prompt_id:
-                                    cached_nodes = data.get('data', {}).get('nodes', [])
+                                if message_data.get('prompt_id') == prompt_id:
+                                    cached_nodes = message_data.get('nodes', [])
                                     progress.update_cached_nodes(cached_nodes)
                                     self.logger.debug(f"Cached {len(cached_nodes)} nodes")
                                     
-                            elif data.get('type') == 'executing':
-                                # Node execution updates
-                                exec_data = data.get('data', {})
-                                if exec_data.get('prompt_id') == prompt_id:
-                                    node_id = exec_data.get('node')
+                            elif message_type == 'executing':
+                                # Node execution updates - only process for our prompt
+                                if message_data.get('prompt_id') == prompt_id:
+                                    node_id = message_data.get('node')
                                     
                                     if node_id is None:
                                         # Execution completed
@@ -560,14 +566,23 @@ class ImageGenerator:
                                         break
                                     else:
                                         # Node started executing
+                                        execution_started = True  # Make sure we're marked as running
                                         progress.update_node_execution(node_id)
+                                        self.logger.debug(f"Executing node: {node_id}")
                                         
-                            elif data.get('type') == 'progress':
-                                # Step progress (e.g., KSampler steps)
-                                progress_data = data.get('data', {})
-                                current_step = progress_data.get('value', 0)
-                                max_steps = progress_data.get('max', 0)
-                                progress.update_step_progress(current_step, max_steps)
+                            elif message_type == 'progress':
+                                # Step progress (e.g., KSampler steps) - only if we're executing
+                                if execution_started:
+                                    current_step = message_data.get('value', 0)
+                                    max_steps = message_data.get('max', 0)
+                                    progress.update_step_progress(current_step, max_steps)
+                                    self.logger.debug(f"Step progress: {current_step}/{max_steps}")
+                                
+                            elif message_type == 'executed':
+                                # Node execution completed - only process for our prompt
+                                if message_data.get('prompt_id') == prompt_id:
+                                    node_id = message_data.get('node')
+                                    self.logger.debug(f"Node {node_id} completed")
                                 
                             # Send progress updates every second
                             current_time = time.time()
@@ -582,7 +597,7 @@ class ImageGenerator:
                             await progress_callback(progress)
                             last_update_time = current_time
                             
-                        # Check if execution is complete via HTTP
+                        # Check if execution is complete via HTTP as fallback
                         try:
                             async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                                 if response.status == 200:
@@ -608,7 +623,7 @@ class ImageGenerator:
             return await self._wait_for_completion_polling(prompt_id, progress_callback)
     
     async def _wait_for_completion_polling(self, prompt_id: str, progress_callback=None) -> Dict[str, Any]:
-        """Simplified polling method with 1-second progress updates."""
+        """Simplified polling method with proper queue status detection."""
         try:
             max_wait_time = self.config.comfyui.timeout
             check_interval = 1.0  # Check every 1 second for faster updates
@@ -616,6 +631,7 @@ class ImageGenerator:
             
             progress = ProgressInfo()
             last_update_time = time.time()
+            execution_started = False
             
             self.logger.info(f"Starting polling for prompt {prompt_id}")
             
@@ -625,63 +641,43 @@ class ImageGenerator:
                     async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                         if response.status == 200:
                             try:
-                                # Get response text first to validate it's not empty
                                 response_text = await response.text()
-                                if not response_text or response_text.strip() == '':
-                                    self.logger.debug(f"Empty response from history endpoint")
-                                    continue
-                                
-                                # Parse JSON with proper error handling
-                                history_data = await response.json()
-                                
-                                # Robust null checking for concurrent operations
-                                if history_data is not None and isinstance(history_data, dict) and prompt_id in history_data:
-                                    # Validate that we have actual completion data
-                                    prompt_data = history_data[prompt_id]
-                                    if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
-                                        # Mark as completed and return
-                                        progress.mark_completed()
-                                        if progress_callback:
-                                            try:
-                                                await progress_callback(progress)
-                                            except Exception:
-                                                pass
-                                        return prompt_data
-                                else:
-                                    # Response doesn't contain our prompt yet
-                                    pass
+                                if response_text and response_text.strip():
+                                    history_data = await response.json()
                                     
+                                    if history_data and isinstance(history_data, dict) and prompt_id in history_data:
+                                        prompt_data = history_data[prompt_id]
+                                        if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
+                                            # Mark as completed and return
+                                            progress.mark_completed()
+                                            if progress_callback:
+                                                try:
+                                                    await progress_callback(progress)
+                                                except Exception:
+                                                    pass
+                                            return prompt_data
+                                        
                             except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
-                                # Invalid JSON response - might be temporary during high load
-                                self.logger.debug(f"Invalid JSON in history response for {prompt_id}: {json_error}")
+                                self.logger.debug(f"Invalid JSON in history response: {json_error}")
                         else:
                             self.logger.debug(f"History endpoint returned status {response.status}")
                 except Exception as e:
-                    # Only log occasionally to avoid spam
                     if (time.time() - start_time) % 30 < check_interval:
                         self.logger.warning(f"Error checking history: {e}")
                 
-                # Check ComfyUI queue status for proper queue integration
+                # Check ComfyUI queue status for proper status reporting
                 try:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
                             try:
-                                # Get response text first to validate it's not empty
                                 response_text = await response.text()
-                                if not response_text or response_text.strip() == '':
-                                    self.logger.debug(f"Empty response from queue endpoint")
-                                    continue
-                                
-                                # Parse JSON with proper error handling
-                                queue_data = await response.json()
-                                
-                                # Robust null checking for concurrent operations
-                                if queue_data is not None and isinstance(queue_data, dict):
-                                    queue_running = queue_data.get('queue_running')
-                                    queue_pending = queue_data.get('queue_pending')
+                                if response_text and response_text.strip():
+                                    queue_data = await response.json()
                                     
-                                    # Additional validation for queue data
-                                    if queue_running is not None and queue_pending is not None:
+                                    if queue_data and isinstance(queue_data, dict):
+                                        queue_running = queue_data.get('queue_running', [])
+                                        queue_pending = queue_data.get('queue_pending', [])
+                                        
                                         # Check if our prompt is currently running
                                         is_running = False
                                         if isinstance(queue_running, list):
@@ -691,24 +687,17 @@ class ImageGenerator:
                                                     if isinstance(item, list) and len(item) >= 2:
                                                         if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
                                                             is_running = True
-                                                            self.logger.debug(f"Prompt {prompt_id} is currently running")
                                                             break
-                                                    # Also handle direct dict format just in case
-                                                    elif isinstance(item, dict) and item.get('prompt_id') == prompt_id:
-                                                        is_running = True
-                                                        self.logger.debug(f"Prompt {prompt_id} is currently running (direct format)")
-                                                        break
                                                 except (AttributeError, TypeError, KeyError):
-                                                    # Skip malformed queue items
                                                     continue
                                         
                                         if is_running:
-                                            # Prompt is actively running
-                                            if progress.status != "running":
+                                            # Prompt is actively running - NOT queued
+                                            if not execution_started:
+                                                execution_started = True
                                                 progress.update_execution_start()
                                                 progress.phase = "Generating"
-                                                progress.queue_position = 0
-                                                self.logger.info(f"Prompt {prompt_id} started running")
+                                                self.logger.info(f"Prompt {prompt_id} is now running")
                                         else:
                                             # Check if prompt is in pending queue
                                             queue_position = None
@@ -720,25 +709,19 @@ class ImageGenerator:
                                                             if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
                                                                 queue_position = i + 1
                                                                 break
-                                                        # Also handle direct dict format just in case
-                                                        elif isinstance(item, dict) and item.get('prompt_id') == prompt_id:
-                                                            queue_position = i + 1
-                                                            break
                                                     except (AttributeError, TypeError, KeyError):
-                                                        # Skip malformed queue items
                                                         continue
                                             
-                                            if queue_position is not None:
-                                                # Prompt is in queue
+                                            if queue_position is not None and not execution_started:
+                                                # Prompt is genuinely queued and hasn't started yet
                                                 if progress.status != "queued" or progress.queue_position != queue_position:
                                                     progress.update_queue_status(queue_position)
                                                     self.logger.info(f"Prompt {prompt_id} is #{queue_position} in queue")
-                                            else:
-                                                # Prompt not found in queue - might be starting up or just completed
-                                                if progress.status == "initializing":
+                                            elif execution_started:
+                                                # We were running but not found in queue - probably generating
+                                                if progress.status == "queued":
                                                     progress.update_execution_start()
-                                                    progress.phase = "Starting"
-                                                    progress.queue_position = 0
+                                                    progress.phase = "Generating"
                                         
                                         # Send progress update every second
                                         current_time = time.time()
@@ -748,18 +731,13 @@ class ImageGenerator:
                                                 last_update_time = current_time
                                             except Exception:
                                                 pass
-                                else:
-                                    # Queue data is None or invalid - might be temporary during high load
-                                    self.logger.debug(f"Invalid queue data format: {type(queue_data)}")
-                                    
+                                                
                             except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
-                                # Invalid JSON response - might be temporary during high load
                                 self.logger.debug(f"Invalid JSON in queue response: {json_error}")
                         else:
                             self.logger.debug(f"Queue endpoint returned status {response.status}")
                             
                 except Exception as e:
-                    # Only warn occasionally to reduce log spam
                     if (time.time() - start_time) % 30 < check_interval:
                         self.logger.warning(f"Error checking queue: {e}")
                 
@@ -772,6 +750,8 @@ class ImageGenerator:
                     status_info = f"Status: {progress.status}"
                     if progress.status == "queued":
                         status_info += f" (#{progress.queue_position})"
+                    elif progress.status == "running":
+                        status_info += f" (executing)"
                     self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s elapsed) - {status_info}")
             
             # Timeout reached
