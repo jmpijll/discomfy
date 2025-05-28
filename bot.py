@@ -252,8 +252,14 @@ class ComfyUIBot(commands.Bot):
                 if settings_text:
                     embed.set_footer(text=settings_text)
                 
+                # Log the progress update
+                self.logger.debug(f"Sending progress update: {progress.status} - {title}")
+                
                 # Always use edit_original_response since we already responded
                 await interaction.edit_original_response(embed=embed)
+                
+                if progress.status == "completed":
+                    self.logger.info(f"✅ Successfully sent completion status to Discord for {operation_type}")
                 
             except discord.NotFound:
                 # Interaction expired, log but don't crash
@@ -387,6 +393,18 @@ async def generate_command(
                     seed=seed,
                     progress_callback=progress_callback
                 )
+            
+            # Send final completion status update
+            try:
+                final_progress = ProgressInfo()
+                final_progress.mark_completed()
+                await progress_callback(final_progress)
+                bot.logger.info("✅ Sent final completion status to Discord")
+                
+                # Small delay to ensure the completion message is visible
+                await asyncio.sleep(1)
+            except Exception as progress_error:
+                bot.logger.warning(f"Failed to send final progress update: {progress_error}")
             
             # Save image
             filename = get_unique_filename(f"discord_{interaction.user.id}")
