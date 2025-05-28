@@ -220,6 +220,7 @@ class ImageGenerator:
         self.base_url = self.config.comfyui.url.rstrip('/')
         self.session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
+        self._queue_lock = asyncio.Lock()  # Add queue lock for concurrent request management
         
     async def __aenter__(self):
         """Async context manager entry."""
@@ -392,49 +393,45 @@ class ImageGenerator:
             raise ComfyUIAPIError(f"Failed to update workflow parameters: {e}")
     
     async def _queue_prompt(self, workflow: Dict[str, Any]) -> str:
-        """Queue a prompt for execution and return the prompt ID."""
+        """Queue a prompt for generation in ComfyUI."""
         try:
-            if not self.session:
-                raise RuntimeError("Session not initialized")
-            
-            client_id = str(uuid.uuid4())
-            prompt_data = {
-                "prompt": workflow,
-                "client_id": client_id
-            }
-            
-            self.logger.info(f"🔄 Queuing prompt with client_id: {client_id}")
-            
-            async with self.session.post(
-                f"{self.base_url}/prompt",
-                json=prompt_data,
-                headers={"Content-Type": "application/json"}
-            ) as response:
+            # Use queue lock to prevent concurrent queuing conflicts
+            async with self._queue_lock:
+                client_id = str(uuid.uuid4())
+                self.logger.info(f"🔄 Queuing prompt with client_id: {client_id}")
                 
-                response_text = await response.text()
-                self.logger.info(f"📋 Queue response status: {response.status}")
-                self.logger.info(f"📋 Queue response: {response_text[:200]}...")
+                prompt_data = {
+                    "prompt": workflow,
+                    "client_id": client_id
+                }
                 
-                if response.status != 200:
-                    raise ComfyUIAPIError(f"Failed to queue prompt: {response.status} - {response_text}")
-                
-                try:
-                    result = json.loads(response_text)
-                except json.JSONDecodeError as e:
-                    raise ComfyUIAPIError(f"Invalid JSON response from ComfyUI: {e}")
-                
-                if 'error' in result:
-                    raise ComfyUIAPIError(f"ComfyUI error: {result['error']}")
-                
-                prompt_id = result.get('prompt_id')
-                if not prompt_id:
-                    raise ComfyUIAPIError("No prompt_id returned from ComfyUI")
-                
-                self.logger.info(f"✅ Successfully queued prompt with ID: {prompt_id}")
-                return prompt_id
-                
+                # Add timeout to prevent hanging
+                timeout = aiohttp.ClientTimeout(total=30)
+                async with self.session.post(
+                    f"{self.base_url}/prompt",
+                    json=prompt_data,
+                    timeout=timeout
+                ) as response:
+                    self.logger.info(f"📋 Queue response status: {response.status}")
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        self.logger.info(f"📋 Queue response: {str(result)[:100]}...")
+                        
+                        if 'prompt_id' in result:
+                            prompt_id = result['prompt_id']
+                            self.logger.info(f"✅ Successfully queued prompt with ID: {prompt_id}")
+                            return prompt_id
+                        else:
+                            raise ComfyUIAPIError(f"No prompt_id in response: {result}")
+                    else:
+                        error_text = await response.text()
+                        raise ComfyUIAPIError(f"Failed to queue prompt: {response.status} - {error_text}")
+                        
+        except asyncio.TimeoutError:
+            raise ComfyUIAPIError("Timeout while queuing prompt - ComfyUI may be overloaded")
         except Exception as e:
-            self.logger.error(f"❌ Failed to queue prompt: {e}")
+            self.logger.error(f"Failed to queue prompt: {e}")
             raise ComfyUIAPIError(f"Failed to queue prompt: {e}")
     
     async def _wait_for_completion_with_websocket(
@@ -478,54 +475,62 @@ class ImageGenerator:
                 try:
                     async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                         if response.status == 200:
-                            history = await response.json()
-                            if prompt_id in history:
-                                self.logger.info(f"✅ Prompt {prompt_id} completed successfully!")
+                            history_data = await response.json()
+                            # Add null check for history data
+                            if history_data is not None and prompt_id in history_data:
+                                # Mark as completed and return
                                 progress.mark_completed()
                                 if progress_callback:
                                     try:
                                         await progress_callback(progress)
                                     except Exception as callback_error:
-                                        self.logger.warning(f"Failed to send final progress callback: {callback_error}")
-                                return history[prompt_id]
+                                        # Don't spam logs with callback errors
+                                        pass
+                                return history_data[prompt_id]
                 except Exception as e:
-                    self.logger.warning(f"Error checking history: {e}")
+                    # Only log occasionally to avoid spam
+                    if (time.time() - start_time) % 30 < check_interval:
+                        self.logger.warning(f"Error checking history: {e}")
                 
                 # Check queue status for position information (not detailed monitoring)
                 try:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
                             queue_data = await response.json()
-                            queue_running = queue_data.get('queue_running', [])
-                            queue_pending = queue_data.get('queue_pending', [])
-                            
-                            # Check if our prompt is currently running
-                            is_running = any(item.get('prompt_id') == prompt_id for item in queue_running)
-                            if is_running:
-                                progress.status = "running"
-                                progress.phase = "Processing"
-                            else:
-                                # Check position in queue
-                                position = None
-                                for i, item in enumerate(queue_pending):
-                                    if item.get('prompt_id') == prompt_id:
-                                        position = i + 1
-                                        break
+                            # Add null checks to prevent NoneType errors
+                            if queue_data is not None:
+                                queue_running = queue_data.get('queue_running', [])
+                                queue_pending = queue_data.get('queue_pending', [])
                                 
-                                if position:
-                                    progress.update_queue_status(position)
-                            
-                            # Send progress update periodically
-                            if progress_callback and (time.time() - start_time) % 10 < check_interval:
-                                try:
-                                    await progress_callback(progress)
-                                except Exception as callback_error:
-                                    # Don't spam logs with callback errors
-                                    pass
+                                # Ensure queue data is valid
+                                if queue_running is not None and queue_pending is not None:
+                                    # Check if our prompt is currently running
+                                    is_running = any(item and item.get('prompt_id') == prompt_id for item in queue_running)
+                                    if is_running:
+                                        progress.status = "running"
+                                        progress.phase = "Processing"
+                                    else:
+                                        # Check position in queue
+                                        position = None
+                                        for i, item in enumerate(queue_pending):
+                                            if item and item.get('prompt_id') == prompt_id:
+                                                position = i + 1
+                                                break
+                                        
+                                        if position:
+                                            progress.update_queue_status(position)
+                                
+                                # Send progress update periodically
+                                if progress_callback and (time.time() - start_time) % 10 < check_interval:
+                                    try:
+                                        await progress_callback(progress)
+                                    except Exception as callback_error:
+                                        # Don't spam logs with callback errors
+                                        pass
                 except Exception as e:
-                    # Reduced logging - only warn occasionally
+                    # Only warn occasionally to reduce log spam
                     if (time.time() - start_time) % 30 < check_interval:
-                        self.logger.warning(f"Error checking queue status: {e}")
+                        self.logger.warning(f"Error checking queue: {e}")
                 
                 # Wait before next check
                 await asyncio.sleep(check_interval)
