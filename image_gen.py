@@ -177,9 +177,13 @@ class ProgressInfo:
         Returns:
             tuple: (title, description, color_value)
         """
+        # Always calculate elapsed time for visual feedback
+        elapsed = time.time() - self.start_time
+        elapsed_str = self.format_time(elapsed)
+        
         if self.status == "queued":
             title = "⏳ In Queue"
-            description = f"📍 Position #{self.queue_position} in queue\n⏱️ Waiting to start..."
+            description = f"📍 Position #{self.queue_position} in queue\n⏱️ Elapsed: {elapsed_str}\n🔄 Waiting to start..."
             color = 0xFFA500  # Orange
             
         elif self.status == "running":
@@ -187,10 +191,7 @@ class ProgressInfo:
             progress_bar = self.get_progress_bar()
             description = f"📊 {self.percentage:.0f}% `{progress_bar}`\n"
             description += f"🔄 {self.phase}\n"
-            
-            # Add time information
-            elapsed = time.time() - self.start_time
-            description += f"⏱️ Elapsed: {self.format_time(elapsed)}"
+            description += f"⏱️ Elapsed: {elapsed_str}"
             
             if self.estimated_time_remaining and self.estimated_time_remaining > 0:
                 description += f" | ETA: {self.format_time(self.estimated_time_remaining)}"
@@ -200,13 +201,12 @@ class ProgressInfo:
         elif self.status == "completed":
             title = "✅ Complete"
             progress_bar = self.get_progress_bar()
-            total_time = time.time() - self.start_time
-            description = f"📊 100% `{progress_bar}`\n⏱️ Total time: {self.format_time(total_time)}"
+            description = f"📊 100% `{progress_bar}`\n⏱️ Total time: {elapsed_str}"
             color = 0x2ECC71  # Green
             
         else:  # initializing or other
             title = "🔄 Starting"
-            description = f"⚙️ {self.phase}..."
+            description = f"⚙️ {self.phase}...\n⏱️ Elapsed: {elapsed_str}"
             color = 0x3498DB  # Blue
             
         return title, description, color
@@ -405,96 +405,168 @@ class ImageGenerator:
             
             self.logger.info(f"Connecting to WebSocket: {ws_url}")
             
-            # Use aiohttp WebSocket client
-            async with self.session.ws_connect(ws_url) as ws:
+            # Use aiohttp WebSocket client with timeout
+            timeout = aiohttp.ClientTimeout(total=300)  # 5 minute timeout
+            
+            async with self.session.ws_connect(ws_url, timeout=timeout) as ws:
                 self.logger.info(f"WebSocket connected for prompt {prompt_id}")
                 
                 # Track if we've started execution
                 execution_started = False
+                last_message_time = time.time()
+                last_progress_update = time.time()
                 
-                async for msg in ws:
-                    if msg.type == aiohttp.WSMsgType.TEXT:
-                        try:
-                            data = json.loads(msg.data)
-                            message_type = data.get('type')
-                            message_data = data.get('data', {})
-                            
-                            self.logger.debug(f"WebSocket message: {message_type}")
-                            
-                            if message_type == 'status':
-                                # Queue status update
-                                status_data = message_data.get('status', {})
-                                exec_info = status_data.get('exec_info', {})
-                                queue_remaining = exec_info.get('queue_remaining', 0)
+                # Add periodic progress updates
+                async def send_periodic_update():
+                    nonlocal last_progress_update
+                    current_time = time.time()
+                    if current_time - last_progress_update > 2.0:  # Update every 2 seconds
+                        if progress_callback:
+                            await progress_callback(progress)
+                        last_progress_update = current_time
+                
+                while True:
+                    try:
+                        # Wait for WebSocket message with timeout
+                        msg = await asyncio.wait_for(ws.receive(), timeout=3.0)
+                        
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            last_message_time = time.time()
+                            try:
+                                data = json.loads(msg.data)
+                                message_type = data.get('type')
+                                message_data = data.get('data', {})
                                 
-                                if queue_remaining > 0 and not execution_started:
-                                    progress.update_queue_status(queue_remaining)
-                                    if progress_callback:
-                                        await progress_callback(progress)
-                            
-                            elif message_type == 'execution_start':
-                                # Execution started
-                                if message_data.get('prompt_id') == prompt_id:
-                                    execution_started = True
-                                    progress.update_execution_start(len(workflow))
-                                    if progress_callback:
-                                        await progress_callback(progress)
-                                    self.logger.info(f"Execution started for prompt {prompt_id}")
-                            
-                            elif message_type == 'execution_cached':
-                                # Some nodes were cached
-                                if message_data.get('prompt_id') == prompt_id:
-                                    cached_nodes = message_data.get('nodes', [])
-                                    for node in cached_nodes:
-                                        progress.update_node_execution(node)
-                                    if progress_callback:
-                                        await progress_callback(progress)
-                            
-                            elif message_type == 'executing':
-                                # Node execution update
-                                if message_data.get('prompt_id') == prompt_id:
-                                    current_node = message_data.get('node')
+                                self.logger.debug(f"WebSocket message: {message_type} - {message_data}")
+                                
+                                if message_type == 'status':
+                                    # Queue status update
+                                    status_data = message_data.get('status', {})
+                                    exec_info = status_data.get('exec_info', {})
+                                    queue_remaining = exec_info.get('queue_remaining', 0)
                                     
-                                    if current_node is None:
-                                        # Execution completed
+                                    if queue_remaining > 0 and not execution_started:
+                                        progress.update_queue_status(queue_remaining)
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                
+                                elif message_type == 'execution_start':
+                                    # Execution started
+                                    if message_data.get('prompt_id') == prompt_id:
+                                        execution_started = True
+                                        progress.update_execution_start(len(workflow))
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                        self.logger.info(f"Execution started for prompt {prompt_id}")
+                                
+                                elif message_type == 'execution_cached':
+                                    # Some nodes were cached
+                                    if message_data.get('prompt_id') == prompt_id:
+                                        cached_nodes = message_data.get('nodes', [])
+                                        for node in cached_nodes:
+                                            progress.update_node_execution(node)
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                
+                                elif message_type == 'executing':
+                                    # Node execution update
+                                    if message_data.get('prompt_id') == prompt_id:
+                                        current_node = message_data.get('node')
+                                        
+                                        if current_node is None:
+                                            # Execution completed
+                                            progress.mark_completed()
+                                            if progress_callback:
+                                                await progress_callback(progress)
+                                            self.logger.info(f"Execution completed for prompt {prompt_id}")
+                                            break
+                                        else:
+                                            # Node started executing
+                                            progress.update_node_execution(current_node)
+                                            progress.estimate_time_remaining()
+                                            if progress_callback:
+                                                await progress_callback(progress)
+                                
+                                elif message_type == 'progress':
+                                    # K-Sampler progress
+                                    current_step = message_data.get('value', 0)
+                                    max_steps = message_data.get('max', 1)
+                                    progress.update_step_progress(current_step, max_steps)
+                                    progress.estimate_time_remaining()
+                                    if progress_callback:
+                                        await progress_callback(progress)
+                                
+                                elif message_type == 'executed':
+                                    # Node execution completed
+                                    if message_data.get('prompt_id') == prompt_id:
+                                        node_id = message_data.get('node')
+                                        self.logger.debug(f"Node {node_id} executed for prompt {prompt_id}")
+                            
+                            except json.JSONDecodeError as e:
+                                self.logger.warning(f"Failed to parse WebSocket message: {e}")
+                                continue
+                        
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
+                            self.logger.error(f"WebSocket error: {ws.exception()}")
+                            break
+                        
+                        elif msg.type == aiohttp.WSMsgType.CLOSE:
+                            self.logger.info("WebSocket connection closed")
+                            break
+                    
+                    except asyncio.TimeoutError:
+                        # No message received in timeout period
+                        current_time = time.time()
+                        
+                        # Send periodic update
+                        await send_periodic_update()
+                        
+                        # Check if we've been waiting too long without messages
+                        if current_time - last_message_time > 30.0:
+                            self.logger.warning(f"No WebSocket messages for 30 seconds, checking completion...")
+                            
+                            # Check if completed via API
+                            async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
+                                if response.status == 200:
+                                    history = await response.json()
+                                    if prompt_id in history:
                                         progress.mark_completed()
                                         if progress_callback:
                                             await progress_callback(progress)
-                                        self.logger.info(f"Execution completed for prompt {prompt_id}")
+                                        self.logger.info(f"Prompt {prompt_id} completed (detected via API)")
+                                        return history[prompt_id]
+                            
+                            # Check queue status
+                            async with self.session.get(f"{self.base_url}/queue") as response:
+                                if response.status == 200:
+                                    queue_data = await response.json()
+                                    queue_running = queue_data.get('queue_running', [])
+                                    queue_pending = queue_data.get('queue_pending', [])
+                                    
+                                    is_running = any(item[1] == prompt_id for item in queue_running)
+                                    is_pending = any(item[1] == prompt_id for item in queue_pending)
+                                    
+                                    if not is_running and not is_pending:
+                                        self.logger.warning(f"Prompt {prompt_id} no longer in queue, falling back to polling")
                                         break
-                                    else:
-                                        # Node started executing
-                                        progress.update_node_execution(current_node)
-                                        progress.estimate_time_remaining()
+                                    
+                                    if is_pending:
+                                        # Update queue position
+                                        queue_position = 1
+                                        for i, item in enumerate(queue_pending):
+                                            if item[1] == prompt_id:
+                                                queue_position = i + 1
+                                                break
+                                        progress.update_queue_status(queue_position)
                                         if progress_callback:
                                             await progress_callback(progress)
-                            
-                            elif message_type == 'progress':
-                                # K-Sampler progress
-                                current_step = message_data.get('value', 0)
-                                max_steps = message_data.get('max', 1)
-                                progress.update_step_progress(current_step, max_steps)
-                                progress.estimate_time_remaining()
-                                if progress_callback:
-                                    await progress_callback(progress)
-                            
-                            elif message_type == 'executed':
-                                # Node execution completed
-                                if message_data.get('prompt_id') == prompt_id:
-                                    node_id = message_data.get('node')
-                                    self.logger.debug(f"Node {node_id} executed for prompt {prompt_id}")
-                        
-                        except json.JSONDecodeError as e:
-                            self.logger.warning(f"Failed to parse WebSocket message: {e}")
-                            continue
-                    
-                    elif msg.type == aiohttp.WSMsgType.ERROR:
-                        self.logger.error(f"WebSocket error: {ws.exception()}")
-                        break
-                    
-                    elif msg.type == aiohttp.WSMsgType.CLOSE:
-                        self.logger.info("WebSocket connection closed")
-                        break
+                                    elif is_running and not execution_started:
+                                        # Execution might have started but we missed the message
+                                        execution_started = True
+                                        progress.update_execution_start(len(workflow))
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                        continue
                 
                 # Get the final result from history
                 async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
@@ -518,8 +590,17 @@ class ImageGenerator:
             start_time = time.time()
             progress = ProgressInfo()
             execution_started = False
+            last_progress_update = time.time()
             
             while time.time() - start_time < max_wait_time:
+                current_time = time.time()
+                
+                # Send periodic progress updates
+                if current_time - last_progress_update > 2.0:
+                    if progress_callback:
+                        await progress_callback(progress)
+                    last_progress_update = current_time
+                
                 # Check history for completion
                 async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                     if response.status == 200:
@@ -528,7 +609,7 @@ class ImageGenerator:
                             progress.mark_completed()
                             if progress_callback:
                                 await progress_callback(progress)
-                            self.logger.info(f"Prompt {prompt_id} completed successfully")
+                            self.logger.info(f"Prompt {prompt_id} completed successfully (polling)")
                             return history[prompt_id]
                 
                 # Check queue status
@@ -556,30 +637,29 @@ class ImageGenerator:
                             
                             raise ComfyUIAPIError(f"Prompt {prompt_id} disappeared from queue without completion")
                         
-                        if progress_callback:
-                            if is_pending:
-                                # Calculate actual queue position
-                                queue_position = 1
-                                for i, item in enumerate(queue_pending):
-                                    if item[1] == prompt_id:
-                                        queue_position = i + 1
-                                        break
-                                progress.update_queue_status(queue_position)
-                            elif is_running and not execution_started:
-                                # Execution started
-                                execution_started = True
-                                # Estimate total nodes (we don't have exact count in polling)
-                                progress.update_execution_start(10)  # Rough estimate
-                                progress.phase = "Generating (polling mode)"
-                            elif is_running:
-                                # Update progress based on elapsed time (rough estimate)
-                                elapsed = time.time() - start_time
-                                # Assume average generation takes 60 seconds
-                                estimated_progress = min(90, (elapsed / 60) * 100)
-                                progress.percentage = estimated_progress
-                                progress.estimate_time_remaining()
-                            
-                            await progress_callback(progress)
+                        if is_pending:
+                            # Calculate actual queue position
+                            queue_position = 1
+                            for i, item in enumerate(queue_pending):
+                                if item[1] == prompt_id:
+                                    queue_position = i + 1
+                                    break
+                            progress.update_queue_status(queue_position)
+                            self.logger.debug(f"Prompt {prompt_id} in queue position {queue_position}")
+                        elif is_running and not execution_started:
+                            # Execution started
+                            execution_started = True
+                            # Estimate total nodes (we don't have exact count in polling)
+                            progress.update_execution_start(10)  # Rough estimate
+                            progress.phase = "Generating (polling mode)"
+                            self.logger.info(f"Prompt {prompt_id} execution started (polling)")
+                        elif is_running:
+                            # Update progress based on elapsed time (rough estimate)
+                            elapsed = time.time() - start_time
+                            # Assume average generation takes 60 seconds
+                            estimated_progress = min(90, (elapsed / 60) * 100)
+                            progress.percentage = estimated_progress
+                            progress.estimate_time_remaining()
                 
                 await asyncio.sleep(check_interval)
             

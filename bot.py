@@ -811,6 +811,9 @@ async def main():
         ]
     )
     
+    # Enable debug logging for image_gen temporarily
+    logging.getLogger('image_gen').setLevel(logging.DEBUG)
+    
     # Create logs directory
     Path("logs").mkdir(exist_ok=True)
     
