@@ -269,38 +269,16 @@ class ComfyUIBot(commands.Bot):
         
         return progress_callback
 
-# Simplified slash command for image generation
-@app_commands.command(name="generate", description="Generate images using ComfyUI with interactive model and LoRA selection")
+# Simplified slash command for image generation - ONLY prompt required
+@app_commands.command(name="generate", description="Generate images using ComfyUI with interactive setup")
 @app_commands.describe(
-    prompt="The prompt for image generation",
-    model="Choose the AI model to use (default: Flux)",
-    negative_prompt="Negative prompt (things to avoid - leave empty for model defaults)",
-    width="Image width (leave empty for model defaults)",
-    height="Image height (leave empty for model defaults)", 
-    steps="Number of sampling steps (leave empty for model defaults)",
-    cfg="CFG scale (leave empty for model defaults)",
-    batch_size="Number of images to generate (default: 1)",
-    seed="Random seed (leave empty for random)"
-)
-@app_commands.choices(
-    model=[
-        app_commands.Choice(name="Flux (Default)", value="flux"),
-        app_commands.Choice(name="HiDream", value="hidream")
-    ]
+    prompt="What you want to generate"
 )
 async def generate_command(
     interaction: discord.Interaction,
-    prompt: str,
-    model: str = "flux",
-    negative_prompt: Optional[str] = None,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
-    steps: Optional[int] = None,
-    cfg: Optional[float] = None,
-    batch_size: int = 1,
-    seed: Optional[int] = None
+    prompt: str
 ):
-    """Generate images using ComfyUI with interactive model and LoRA selection."""
+    """Generate images using ComfyUI with complete interactive setup."""
     bot: ComfyUIBot = interaction.client
     
     try:
@@ -313,7 +291,7 @@ async def generate_command(
             )
             return
         
-        # Validate inputs
+        # Validate prompt
         if not prompt.strip():
             await bot._send_error_embed(
                 interaction,
@@ -330,128 +308,30 @@ async def generate_command(
             )
             return
         
-        if batch_size > bot.config.generation.max_batch_size:
-            await bot._send_error_embed(
-                interaction,
-                "Batch Size Too Large",
-                f"Maximum batch size is {bot.config.generation.max_batch_size}."
-            )
-            return
-        
-        # Determine workflow based on model and validate it exists
-        workflow_name = f"{model}_lora"
-        workflow_config = bot.config.workflows.get(workflow_name)
-        
-        if not workflow_config or not workflow_config.enabled:
-            await bot._send_error_embed(
-                interaction,
-                "Model Not Available",
-                f"The '{model}' model is not available or disabled."
-            )
-            return
-        
-        # Apply model-specific defaults for parameters not provided by user
-        if model == "flux":
-            # Flux defaults
-            if width is None: width = 1024
-            if height is None: height = 1024
-            if steps is None: steps = 30
-            if cfg is None: cfg = 5.0
-            if negative_prompt is None: negative_prompt = ""
-        elif model == "hidream":
-            # HiDream defaults
-            if width is None: width = 1216
-            if height is None: height = 1216
-            if steps is None: steps = 50
-            if cfg is None: cfg = 7.0
-            if negative_prompt is None: negative_prompt = "bad ugly jpeg artifacts"
-        else:
-            # Fallback defaults
-            if width is None: width = 1024
-            if height is None: height = 1024
-            if steps is None: steps = 30
-            if cfg is None: cfg = 5.0
-            if negative_prompt is None: negative_prompt = ""
-        
-        # Validate parameters after applying defaults
-        if width < 256 or width > 2048 or height < 256 or height > 2048:
-            await bot._send_error_embed(
-                interaction,
-                "Invalid Dimensions",
-                "Width and height must be between 256 and 2048 pixels."
-            )
-            return
-        
-        if steps < 1 or steps > 150:
-            await bot._send_error_embed(
-                interaction,
-                "Invalid Steps",
-                "Steps must be between 1 and 150."
-            )
-            return
-        
-        if cfg < 1.0 or cfg > 30.0:
-            await bot._send_error_embed(
-                interaction,
-                "Invalid CFG",
-                "CFG scale must be between 1.0 and 30.0."
-            )
-            return
-        
-        # Create interactive LoRA selection view
+        # Create interactive setup view with all parameters
         await interaction.response.defer()
         
-        # Fetch available LoRAs for the selected model
-        try:
-            async with bot.image_generator as gen:
-                all_loras = await gen.get_available_loras()
-                model_loras = gen.filter_loras_by_model(all_loras, model)
-        except Exception as e:
-            bot.logger.error(f"Failed to fetch LoRAs: {e}")
-            model_loras = []
-        
-        # Create generation parameters object to pass to the view
-        generation_params = {
-            'prompt': prompt,
-            'negative_prompt': negative_prompt,
-            'workflow_name': workflow_name,
-            'model': model,
-            'width': width,
-            'height': height,
-            'steps': steps,
-            'cfg': cfg,
-            'batch_size': batch_size,
-            'seed': seed
-        }
-        
-        # Create interactive view with LoRA selection
-        view = GenerationSetupView(bot, generation_params, model_loras, interaction.user.id)
-        
         # Create setup embed
-        model_display = "Flux" if model == "flux" else "HiDream"
         setup_embed = discord.Embed(
-            title=f"🎨 Image Generation Setup - {model_display}",
-            description=f"**Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}\n\n" +
-                       f"**Model:** {model_display}\n" +
-                       f"**Size:** {width}x{height} | **Steps:** {steps} | **CFG:** {cfg}",
+            title="🎨 Image Generation Setup",
+            description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n" +
+                       f"Configure your generation settings below:",
             color=discord.Color.blue()
         )
         
-        if model_loras:
-            setup_embed.add_field(
-                name="🎯 Next Step",
-                value=f"Choose a LoRA from the dropdown below, or click **Generate Without LoRA** to proceed.\n\n" +
-                      f"**Available LoRAs for {model_display}:** {len(model_loras)}",
-                inline=False
-            )
-        else:
-            setup_embed.add_field(
-                name="🎯 Ready to Generate",
-                value=f"No LoRAs available for {model_display}. Click **Generate Image** to proceed.",
-                inline=False
-            )
+        setup_embed.add_field(
+            name="🎯 Next Steps",
+            value="1️⃣ **Select Model** (Flux or HiDream)\n" +
+                  "2️⃣ **Choose LoRA** (optional)\n" +
+                  "3️⃣ **Adjust Settings** (optional)\n" +
+                  "4️⃣ **Generate Image**",
+            inline=False
+        )
         
         setup_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        
+        # Create interactive view with all configuration options
+        view = CompleteSetupView(bot, prompt, interaction.user.id)
         
         await interaction.followup.send(embed=setup_embed, view=view)
         
@@ -472,6 +352,105 @@ async def generate_command(
                     await interaction.response.send_message("❌ An unexpected error occurred. Please try again later.")
             except:
                 bot.logger.error("Failed to send error response to user")
+
+# Complete interactive setup view with all parameters
+class CompleteSetupView(discord.ui.View):
+    """Complete interactive setup view for all generation parameters."""
+    
+    def __init__(self, bot: ComfyUIBot, prompt: str, user_id: int):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.bot = bot
+        self.prompt = prompt
+        self.user_id = user_id
+        
+        # Default parameters (will be updated based on model selection)
+        self.model = "flux"
+        self.negative_prompt = ""
+        self.width = 1024
+        self.height = 1024
+        self.steps = 30
+        self.cfg = 5.0
+        self.batch_size = 1
+        self.seed = None
+        self.selected_lora = None
+        self.lora_strength = 1.0
+        self.loras = []
+        
+        # Add model selection first
+        self.add_item(ModelSelectMenu())
+        self.add_item(ParameterSettingsButton())
+        self.add_item(GenerateNowButton())
+    
+    async def update_model(self, model: str, interaction: discord.Interaction):
+        """Update model and fetch LoRAs, then refresh the view."""
+        self.model = model
+        
+        # Apply model-specific defaults
+        if model == "flux":
+            self.width = 1024
+            self.height = 1024
+            self.steps = 30
+            self.cfg = 5.0
+            self.negative_prompt = ""
+        elif model == "hidream":
+            self.width = 1216
+            self.height = 1216
+            self.steps = 50
+            self.cfg = 7.0
+            self.negative_prompt = "bad ugly jpeg artifacts"
+        
+        # Fetch LoRAs for this model
+        try:
+            async with self.bot.image_generator as gen:
+                all_loras = await gen.get_available_loras()
+                self.loras = gen.filter_loras_by_model(all_loras, model)
+        except Exception as e:
+            self.bot.logger.error(f"Failed to fetch LoRAs: {e}")
+            self.loras = []
+        
+        # Clear existing items and rebuild view
+        self.clear_items()
+        self.add_item(ModelSelectMenu())
+        
+        # Add LoRA selection if available
+        if self.loras:
+            self.add_item(LoRASelectMenu(self.loras))
+            if self.selected_lora:
+                self.add_item(LoRAStrengthButton())
+        
+        self.add_item(ParameterSettingsButton())
+        self.add_item(GenerateNowButton())
+        
+        # Update the embed
+        model_display = "Flux" if model == "flux" else "HiDream"
+        updated_embed = discord.Embed(
+            title="🎨 Image Generation Setup",
+            description=f"**Prompt:** {self.prompt[:200]}{'...' if len(self.prompt) > 200 else ''}\n\n" +
+                       f"**Model:** {model_display}\n" +
+                       f"**Size:** {self.width}x{self.height} | **Steps:** {self.steps} | **CFG:** {self.cfg}",
+            color=discord.Color.blue()
+        )
+        
+        status_text = f"✅ **Model Selected:** {model_display}\n"
+        if self.loras:
+            status_text += f"📋 **Available LoRAs:** {len(self.loras)}\n"
+        status_text += f"⚙️ **Settings:** Ready (click 'Adjust Settings' to customize)\n"
+        status_text += f"🚀 **Ready to generate!**"
+        
+        updated_embed.add_field(
+            name="📊 Current Configuration",
+            value=status_text,
+            inline=False
+        )
+        
+        updated_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        
+        await interaction.response.edit_message(embed=updated_embed, view=self)
+    
+    async def on_timeout(self):
+        """Called when the view times out."""
+        for item in self.children:
+            item.disabled = True
 
 # Interactive view for generation setup with LoRA selection
 class GenerationSetupView(discord.ui.View):
@@ -751,7 +730,17 @@ class LoRASelectMenu(discord.ui.Select):
     
     async def callback(self, interaction: discord.Interaction):
         """Handle LoRA selection."""
-        view: GenerationSetupView = self.view
+        view = self.view
+        
+        # Handle both CompleteSetupView and GenerationSetupView
+        if hasattr(view, 'user_id'):
+            # Check authorization for CompleteSetupView
+            if interaction.user.id != view.user_id:
+                await interaction.response.send_message(
+                    "❌ Only the person who started this generation can use these controls.",
+                    ephemeral=True
+                )
+                return
         
         # Handle the case where no LoRAs are available
         if self.values[0] == "none":
@@ -765,18 +754,65 @@ class LoRASelectMenu(discord.ui.Select):
         
         # Find the display name for the selected LoRA
         selected_display_name = "Unknown"
-        for lora in view.loras:
+        loras_list = getattr(view, 'loras', [])
+        for lora in loras_list:
             if lora.get('filename') == view.selected_lora:
                 selected_display_name = lora.get('display_name', lora.get('filename', 'Unknown'))
                 break
         
-        await interaction.response.send_message(
-            f"✅ **LoRA Selected:** {selected_display_name}\n" +
-            f"📄 **Filename:** `{view.selected_lora}`\n" +
-            f"💪 **Strength:** {view.lora_strength}\n\n" +
-            f"Click **Adjust Strength** to change strength, or **Generate Image** to proceed!",
-            ephemeral=True
-        )
+        # For CompleteSetupView, add LoRA strength button and send clean ephemeral response
+        if isinstance(view, CompleteSetupView):
+            # Add LoRA strength button if not already present
+            if view.selected_lora and not any(isinstance(item, LoRAStrengthButton) for item in view.children):
+                view.add_item(LoRAStrengthButton())
+                
+                # Update the original message with the new button
+                try:
+                    model_display = "Flux" if view.model == "flux" else "HiDream"
+                    updated_embed = discord.Embed(
+                        title="🎨 Image Generation Setup",
+                        description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}\n\n" +
+                                   f"**Model:** {model_display}\n" +
+                                   f"**Size:** {view.width}x{view.height} | **Steps:** {view.steps} | **CFG:** {view.cfg}",
+                        color=discord.Color.blue()
+                    )
+                    
+                    status_text = f"✅ **Model Selected:** {model_display}\n"
+                    status_text += f"📋 **LoRA Selected:** {selected_display_name} (strength: {view.lora_strength})\n"
+                    status_text += f"⚙️ **Settings:** Ready (click 'Adjust Settings' to customize)\n"
+                    status_text += f"🚀 **Ready to generate!**"
+                    
+                    updated_embed.add_field(
+                        name="📊 Current Configuration",
+                        value=status_text,
+                        inline=False
+                    )
+                    
+                    updated_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+                    
+                    await interaction.response.edit_message(embed=updated_embed, view=view)
+                except:
+                    # Fallback to simple ephemeral response if editing fails
+                    await interaction.response.send_message(
+                        f"✅ **LoRA Selected:** {selected_display_name}\n" +
+                        f"💪 **Strength:** {view.lora_strength}",
+                        ephemeral=True
+                    )
+            else:
+                await interaction.response.send_message(
+                    f"✅ **LoRA Selected:** {selected_display_name}\n" +
+                    f"💪 **Strength:** {view.lora_strength}",
+                    ephemeral=True
+                )
+        else:
+            # Original behavior for GenerationSetupView
+            await interaction.response.send_message(
+                f"✅ **LoRA Selected:** {selected_display_name}\n" +
+                f"📄 **Filename:** `{view.selected_lora}`\n" +
+                f"💪 **Strength:** {view.lora_strength}\n\n" +
+                f"Click **Adjust Strength** to change strength, or **Generate Image** to proceed!",
+                ephemeral=True
+            )
 
 
 class LoRAStrengthButton(discord.ui.Button):
@@ -791,7 +827,16 @@ class LoRAStrengthButton(discord.ui.Button):
     
     async def callback(self, interaction: discord.Interaction):
         """Show modal to adjust LoRA strength."""
-        view: GenerationSetupView = self.view
+        view = self.view
+        
+        # Check authorization for both view types
+        if hasattr(view, 'user_id') and interaction.user.id != view.user_id:
+            await interaction.response.send_message(
+                "❌ Only the person who started this generation can use these controls.",
+                ephemeral=True
+            )
+            return
+        
         modal = LoRAStrengthModal(view.lora_strength, view)
         await interaction.response.send_modal(modal)
 
@@ -799,7 +844,7 @@ class LoRAStrengthButton(discord.ui.Button):
 class LoRAStrengthModal(discord.ui.Modal):
     """Modal for adjusting LoRA strength."""
     
-    def __init__(self, current_strength: float, view: 'GenerationSetupView'):
+    def __init__(self, current_strength: float, view):
         super().__init__(title="Adjust LoRA Strength")
         self.view = view
         self.strength_input = discord.ui.TextInput(
@@ -819,11 +864,19 @@ class LoRAStrengthModal(discord.ui.Modal):
                 # Update the view's lora_strength
                 self.view.lora_strength = strength
                 
-                await interaction.response.send_message(
-                    f"✅ **LoRA strength updated to {strength}**\n" +
-                    f"Click **Generate Image** to proceed with generation!",
-                    ephemeral=True
-                )
+                # For CompleteSetupView, update the main embed
+                if isinstance(self.view, CompleteSetupView):
+                    await interaction.response.send_message(
+                        f"✅ **LoRA strength updated to {strength}**",
+                        ephemeral=True
+                    )
+                else:
+                    # Original behavior for GenerationSetupView
+                    await interaction.response.send_message(
+                        f"✅ **LoRA strength updated to {strength}**\n" +
+                        f"Click **Generate Image** to proceed with generation!",
+                        ephemeral=True
+                    )
             else:
                 await interaction.response.send_message(
                     "❌ **Invalid strength!** Please enter a value between 0.0 and 2.0.",
@@ -1296,6 +1349,283 @@ async def loras_command(interaction: discord.Interaction, model: str = "all"):
             color=discord.Color.red()
         )
         await interaction.followup.send(embed=embed)
+
+class ModelSelectMenu(discord.ui.Select):
+    """Select menu for choosing AI model."""
+    
+    def __init__(self):
+        options = [
+            discord.SelectOption(
+                label="Flux (Default)",
+                value="flux",
+                description="High-quality, fast generation - 1024x1024, 30 steps",
+                emoji="🚀"
+            ),
+            discord.SelectOption(
+                label="HiDream",
+                value="hidream", 
+                description="Detailed, artistic images - 1216x1216, 50 steps",
+                emoji="🎨"
+            )
+        ]
+        
+        super().__init__(
+            placeholder="🤖 Choose AI Model...",
+            min_values=1,
+            max_values=1,
+            options=options
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Handle model selection."""
+        view: CompleteSetupView = self.view
+        
+        # Check if user is authorized
+        if interaction.user.id != view.user_id:
+            await interaction.response.send_message(
+                "❌ Only the person who started this generation can use these controls.",
+                ephemeral=True
+            )
+            return
+        
+        selected_model = self.values[0]
+        await view.update_model(selected_model, interaction)
+
+
+class ParameterSettingsButton(discord.ui.Button):
+    """Button to open parameter settings modal."""
+    
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.secondary,
+            label="⚙️ Adjust Settings",
+            emoji="🔧"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Show parameter settings modal."""
+        view: CompleteSetupView = self.view
+        
+        # Check if user is authorized
+        if interaction.user.id != view.user_id:
+            await interaction.response.send_message(
+                "❌ Only the person who started this generation can use these controls.",
+                ephemeral=True
+            )
+            return
+        
+        modal = ParameterSettingsModal(view)
+        await interaction.response.send_modal(modal)
+
+
+class ParameterSettingsModal(discord.ui.Modal):
+    """Modal for adjusting all generation parameters."""
+    
+    def __init__(self, view: 'CompleteSetupView'):
+        super().__init__(title="🔧 Generation Settings")
+        self.view = view
+        
+        # Add input fields for all parameters
+        self.negative_prompt_input = discord.ui.TextInput(
+            label="Negative Prompt",
+            placeholder="Things to avoid in the image...",
+            default=view.negative_prompt,
+            required=False,
+            max_length=500
+        )
+        
+        self.dimensions_input = discord.ui.TextInput(
+            label="Dimensions (WIDTHxHEIGHT)",
+            placeholder="1024x1024",
+            default=f"{view.width}x{view.height}",
+            required=False,
+            max_length=20
+        )
+        
+        self.steps_input = discord.ui.TextInput(
+            label="Steps (1-150)",
+            placeholder="30",
+            default=str(view.steps),
+            required=False,
+            max_length=3
+        )
+        
+        self.cfg_input = discord.ui.TextInput(
+            label="CFG Scale (1.0-30.0)",
+            placeholder="5.0",
+            default=str(view.cfg),
+            required=False,
+            max_length=5
+        )
+        
+        self.batch_seed_input = discord.ui.TextInput(
+            label="Batch Size | Seed (1-4 | number or empty)",
+            placeholder="1 | (empty for random)",
+            default=f"{view.batch_size} | {view.seed if view.seed else ''}",
+            required=False,
+            max_length=20
+        )
+        
+        self.add_item(self.negative_prompt_input)
+        self.add_item(self.dimensions_input)
+        self.add_item(self.steps_input)
+        self.add_item(self.cfg_input)
+        self.add_item(self.batch_seed_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle parameter updates."""
+        try:
+            # Parse and validate dimensions
+            if self.dimensions_input.value.strip():
+                try:
+                    dims = self.dimensions_input.value.strip().lower().replace('x', 'x').split('x')
+                    if len(dims) == 2:
+                        width = int(dims[0])
+                        height = int(dims[1])
+                        if 256 <= width <= 2048 and 256 <= height <= 2048:
+                            self.view.width = width
+                            self.view.height = height
+                        else:
+                            raise ValueError("Dimensions out of range")
+                    else:
+                        raise ValueError("Invalid format")
+                except:
+                    await interaction.response.send_message(
+                        "❌ Invalid dimensions! Use format like '1024x1024' (256-2048)",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Parse and validate steps
+            if self.steps_input.value.strip():
+                try:
+                    steps = int(self.steps_input.value.strip())
+                    if 1 <= steps <= 150:
+                        self.view.steps = steps
+                    else:
+                        raise ValueError("Steps out of range")
+                except:
+                    await interaction.response.send_message(
+                        "❌ Invalid steps! Must be between 1 and 150",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Parse and validate CFG
+            if self.cfg_input.value.strip():
+                try:
+                    cfg = float(self.cfg_input.value.strip())
+                    if 1.0 <= cfg <= 30.0:
+                        self.view.cfg = cfg
+                    else:
+                        raise ValueError("CFG out of range")
+                except:
+                    await interaction.response.send_message(
+                        "❌ Invalid CFG! Must be between 1.0 and 30.0",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Parse batch size and seed
+            if self.batch_seed_input.value.strip():
+                try:
+                    parts = self.batch_seed_input.value.strip().split('|')
+                    if len(parts) >= 1:
+                        batch_size = int(parts[0].strip())
+                        if 1 <= batch_size <= 4:
+                            self.view.batch_size = batch_size
+                        else:
+                            raise ValueError("Batch size out of range")
+                    
+                    if len(parts) >= 2 and parts[1].strip():
+                        seed = int(parts[1].strip())
+                        self.view.seed = seed
+                    elif len(parts) >= 2:
+                        self.view.seed = None
+                except:
+                    await interaction.response.send_message(
+                        "❌ Invalid batch/seed! Use format like '2 | 12345' or '1 |' for random seed",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Update negative prompt
+            self.view.negative_prompt = self.negative_prompt_input.value.strip()
+            
+            await interaction.response.send_message(
+                "✅ **Settings Updated!**\n" +
+                f"📏 **Size:** {self.view.width}x{self.view.height}\n" +
+                f"🔧 **Steps:** {self.view.steps} | **CFG:** {self.view.cfg}\n" +
+                f"📦 **Batch:** {self.view.batch_size} | **Seed:** {self.view.seed if self.view.seed else 'Random'}\n" +
+                f"🚫 **Negative:** {self.view.negative_prompt[:50]}{'...' if len(self.view.negative_prompt) > 50 else '(none)' if not self.view.negative_prompt else ''}",
+                ephemeral=True
+            )
+            
+        except Exception as e:
+            await interaction.response.send_message(
+                "❌ Error updating settings. Please check your input format.",
+                ephemeral=True
+            )
+
+
+class GenerateNowButton(discord.ui.Button):
+    """Button to start image generation with current settings."""
+    
+    def __init__(self):
+        super().__init__(
+            style=discord.ButtonStyle.success,
+            label="🎨 Generate Image",
+            emoji="✨"
+        )
+    
+    async def callback(self, interaction: discord.Interaction):
+        """Start image generation."""
+        view: CompleteSetupView = self.view
+        
+        # Check if user is authorized
+        if interaction.user.id != view.user_id:
+            await interaction.response.send_message(
+                "❌ Only the person who started this generation can use these controls.",
+                ephemeral=True
+            )
+            return
+        
+        # Validate workflow exists
+        workflow_name = f"{view.model}_lora"
+        workflow_config = view.bot.config.workflows.get(workflow_name)
+        
+        if not workflow_config or not workflow_config.enabled:
+            await interaction.response.send_message(
+                f"❌ The '{view.model}' model is not available or disabled.",
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.defer()
+        
+        # Delete the setup message to clean up chat
+        try:
+            await interaction.delete_original_response()
+        except:
+            pass  # If deletion fails, continue anyway
+        
+        # Create generation parameters
+        generation_params = {
+            'prompt': view.prompt,
+            'negative_prompt': view.negative_prompt,
+            'workflow_name': workflow_name,
+            'model': view.model,
+            'width': view.width,
+            'height': view.height,
+            'steps': view.steps,
+            'cfg': view.cfg,
+            'batch_size': view.batch_size,
+            'seed': view.seed
+        }
+        
+        # Start generation using the existing generation logic
+        generation_view = GenerationSetupView(view.bot, generation_params, view.loras, view.user_id)
+        await generation_view._start_generation(interaction, view.selected_lora, view.lora_strength)
 
 async def main():
     """Main function to run the bot."""
