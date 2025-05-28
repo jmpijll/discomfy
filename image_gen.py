@@ -291,7 +291,9 @@ class ImageGenerator:
         steps: int = 50,
         cfg: float = 5.0,
         seed: Optional[int] = None,
-        batch_size: int = 1
+        batch_size: int = 1,
+        lora_name: Optional[str] = None,
+        lora_strength: float = 1.0
     ) -> Dict[str, Any]:
         """Update workflow parameters with user inputs."""
         try:
@@ -305,7 +307,7 @@ class ImageGenerator:
             # Find node types in the workflow
             node_types = {node_id: node_data.get('class_type') for node_id, node_data in updated_workflow.items()}
             
-            # Update KSampler node
+            # Update KSampler node (for HiDream workflows)
             ksampler_nodes = [node_id for node_id, class_type in node_types.items() if class_type == 'KSampler']
             if ksampler_nodes:
                 ksampler_id = ksampler_nodes[0]
@@ -330,6 +332,29 @@ class ImageGenerator:
                     if negative_node_id in updated_workflow:
                         updated_workflow[negative_node_id]['inputs']['text'] = negative_prompt
             
+            # Update RandomNoise node (for Flux workflows)
+            random_noise_nodes = [node_id for node_id, class_type in node_types.items() if class_type == 'RandomNoise']
+            if random_noise_nodes:
+                noise_id = random_noise_nodes[0]
+                updated_workflow[noise_id]['inputs']['noise_seed'] = seed
+            
+            # Update BasicScheduler node (for Flux workflows)
+            basic_scheduler_nodes = [node_id for node_id, class_type in node_types.items() if class_type == 'BasicScheduler']
+            if basic_scheduler_nodes:
+                scheduler_id = basic_scheduler_nodes[0]
+                updated_workflow[scheduler_id]['inputs']['steps'] = steps
+            
+            # Update CLIPTextEncode nodes for prompts
+            clip_encode_nodes = [node_id for node_id, class_type in node_types.items() if class_type == 'CLIPTextEncode']
+            for node_id in clip_encode_nodes:
+                node_data = updated_workflow[node_id]
+                title = node_data.get('_meta', {}).get('title', '').lower()
+                
+                if 'positive' in title:
+                    node_data['inputs']['text'] = prompt
+                elif 'negative' in title:
+                    node_data['inputs']['text'] = negative_prompt
+            
             # Update EmptySD3LatentImage or EmptyLatentImage node for dimensions
             latent_nodes = [
                 node_id for node_id, class_type in node_types.items() 
@@ -342,7 +367,24 @@ class ImageGenerator:
                 latent_node['inputs']['height'] = height
                 latent_node['inputs']['batch_size'] = batch_size
             
-            self.logger.debug(f"Updated workflow parameters: prompt='{prompt[:50]}...', size={width}x{height}")
+            # Update LoraLoaderModelOnly node
+            lora_loader_nodes = [node_id for node_id, class_type in node_types.items() if class_type == 'LoraLoaderModelOnly']
+            if lora_loader_nodes:
+                lora_id = lora_loader_nodes[0]
+                lora_node = updated_workflow[lora_id]
+                
+                if lora_name and lora_name != "none":
+                    # Use specified LoRA
+                    lora_node['inputs']['lora_name'] = lora_name
+                    lora_node['inputs']['strength_model'] = lora_strength
+                    self.logger.debug(f"Using LoRA: {lora_name} with strength {lora_strength}")
+                else:
+                    # No LoRA - we could either remove the node or use a default
+                    # For simplicity, we'll use a very low strength to effectively disable it
+                    lora_node['inputs']['strength_model'] = 0.0
+                    self.logger.debug("No LoRA selected - setting strength to 0.0")
+            
+            self.logger.debug(f"Updated workflow parameters: prompt='{prompt[:50]}...', size={width}x{height}, LoRA={lora_name}")
             return updated_workflow
             
         except Exception as e:
@@ -624,6 +666,8 @@ class ImageGenerator:
         cfg: float = 5.0,
         seed: Optional[int] = None,
         batch_size: int = 1,
+        lora_name: Optional[str] = None,
+        lora_strength: float = 1.0,
         progress_callback=None
     ) -> Tuple[bytes, Dict[str, Any]]:
         """
@@ -639,6 +683,8 @@ class ImageGenerator:
             cfg: CFG scale
             seed: Random seed (auto-generated if None)
             batch_size: Number of images to generate
+            lora_name: Name of LoRA to use (optional)
+            lora_strength: Strength of the selected LoRA
             progress_callback: Optional callback for progress updates
         
         Returns:
@@ -664,7 +710,7 @@ class ImageGenerator:
             # Load and update workflow
             workflow = self._load_workflow(workflow_name)
             updated_workflow = self._update_workflow_parameters(
-                workflow, prompt, negative_prompt, width, height, steps, cfg, seed, batch_size
+                workflow, prompt, negative_prompt, width, height, steps, cfg, seed, batch_size, lora_name, lora_strength
             )
             
             # Queue prompt
@@ -695,6 +741,8 @@ class ImageGenerator:
                 'seed': seed,
                 'batch_size': batch_size,
                 'num_images': len(images),
+                'lora_name': lora_name,
+                'lora_strength': lora_strength,
                 'timestamp': time.time()
             }
             
@@ -902,6 +950,63 @@ class ImageGenerator:
         except Exception as e:
             self.logger.error(f"Failed to upload image: {e}")
             raise ComfyUIAPIError(f"Failed to upload image: {e}")
+    
+    async def get_available_loras(self) -> List[Dict[str, str]]:
+        """Get list of available LoRAs from ComfyUI."""
+        try:
+            if not self.session:
+                raise RuntimeError("Session not initialized")
+            
+            async with self.session.get(f"{self.base_url}/object_info/LoraLoaderModelOnly") as response:
+                if response.status == 200:
+                    object_info = await response.json()
+                    lora_list = object_info.get("LoraLoaderModelOnly", {}).get("input", {}).get("required", {}).get("lora_name", [])
+                    
+                    if isinstance(lora_list, list) and len(lora_list) > 0:
+                        # Extract the actual LoRA names from the nested structure
+                        lora_names = lora_list[0] if isinstance(lora_list[0], list) else lora_list
+                        
+                        loras = []
+                        for lora_name in lora_names:
+                            if isinstance(lora_name, str):
+                                loras.append({
+                                    'filename': lora_name,
+                                    'display_name': lora_name.replace('.safetensors', '').replace('_', ' ').title(),
+                                    'type': 'hidream' if 'hidream' in lora_name.lower() else 'flux'
+                                })
+                        
+                        self.logger.info(f"Found {len(loras)} LoRAs")
+                        return loras
+                    else:
+                        self.logger.warning("No LoRAs found in ComfyUI response")
+                        return []
+                else:
+                    self.logger.error(f"Failed to fetch LoRAs: {response.status}")
+                    return []
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to get available LoRAs: {e}")
+            return []
+    
+    def filter_loras_by_model(self, loras: List[Dict[str, str]], model_type: str) -> List[Dict[str, str]]:
+        """Filter LoRAs based on the selected model type."""
+        try:
+            if model_type.lower() == 'hidream':
+                # Only include LoRAs with 'hidream' in the name
+                filtered = [lora for lora in loras if 'hidream' in lora['filename'].lower()]
+            elif model_type.lower() == 'flux':
+                # Include LoRAs that don't have 'hidream' in the name
+                filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
+            else:
+                # Unknown model type, return all
+                filtered = loras
+            
+            self.logger.debug(f"Filtered {len(filtered)} LoRAs for model type '{model_type}'")
+            return filtered
+            
+        except Exception as e:
+            self.logger.error(f"Failed to filter LoRAs: {e}")
+            return loras
 
 # Utility functions for file management
 def save_output_image(image_data: bytes, filename: str) -> Path:
