@@ -474,20 +474,37 @@ class ImageGenerator:
                     async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
                         if response.status == 200:
                             try:
+                                # Get response text first to validate it's not empty
+                                response_text = await response.text()
+                                if not response_text or response_text.strip() == '':
+                                    self.logger.debug(f"Empty response from history endpoint")
+                                    continue
+                                
+                                # Parse JSON with proper error handling
                                 history_data = await response.json()
+                                
                                 # Robust null checking for concurrent operations
                                 if history_data is not None and isinstance(history_data, dict) and prompt_id in history_data:
-                                    # Mark as completed and return
-                                    progress.mark_completed()
-                                    if progress_callback:
-                                        try:
-                                            await progress_callback(progress)
-                                        except Exception:
-                                            pass
-                                    return history_data[prompt_id]
-                            except (ValueError, TypeError) as json_error:
+                                    # Validate that we have actual completion data
+                                    prompt_data = history_data[prompt_id]
+                                    if isinstance(prompt_data, dict) and 'outputs' in prompt_data:
+                                        # Mark as completed and return
+                                        progress.mark_completed()
+                                        if progress_callback:
+                                            try:
+                                                await progress_callback(progress)
+                                            except Exception:
+                                                pass
+                                        return prompt_data
+                                else:
+                                    # Response doesn't contain our prompt yet
+                                    pass
+                                    
+                            except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
                                 # Invalid JSON response - might be temporary during high load
-                                self.logger.debug(f"Invalid JSON in history response: {json_error}")
+                                self.logger.debug(f"Invalid JSON in history response for {prompt_id}: {json_error}")
+                        else:
+                            self.logger.debug(f"History endpoint returned status {response.status}")
                 except Exception as e:
                     # Only log occasionally to avoid spam
                     if (time.time() - start_time) % 30 < check_interval:
@@ -498,6 +515,13 @@ class ImageGenerator:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
                             try:
+                                # Get response text first to validate it's not empty
+                                response_text = await response.text()
+                                if not response_text or response_text.strip() == '':
+                                    self.logger.debug(f"Empty response from queue endpoint")
+                                    continue
+                                
+                                # Parse JSON with proper error handling
                                 queue_data = await response.json()
                                 
                                 # Robust null checking for concurrent operations
@@ -523,7 +547,7 @@ class ImageGenerator:
                                                         is_running = True
                                                         self.logger.debug(f"Prompt {prompt_id} is currently running (direct format)")
                                                         break
-                                                except (AttributeError, TypeError):
+                                                except (AttributeError, TypeError, KeyError):
                                                     # Skip malformed queue items
                                                     continue
                                         
@@ -549,7 +573,7 @@ class ImageGenerator:
                                                         elif isinstance(item, dict) and item.get('prompt_id') == prompt_id:
                                                             queue_position = i + 1
                                                             break
-                                                    except (AttributeError, TypeError):
+                                                    except (AttributeError, TypeError, KeyError):
                                                         # Skip malformed queue items
                                                         continue
                                             
@@ -577,7 +601,7 @@ class ImageGenerator:
                                     # Queue data is None or invalid - might be temporary during high load
                                     self.logger.debug(f"Invalid queue data format: {type(queue_data)}")
                                     
-                            except (ValueError, TypeError) as json_error:
+                            except (ValueError, TypeError, aiohttp.ContentTypeError) as json_error:
                                 # Invalid JSON response - might be temporary during high load
                                 self.logger.debug(f"Invalid JSON in queue response: {json_error}")
                         else:
@@ -611,12 +635,49 @@ class ImageGenerator:
         """Download generated images from ComfyUI."""
         try:
             images = []
-            outputs = history.get('outputs', {})
+            
+            # Comprehensive null checking for history data
+            if history is None:
+                raise ComfyUIAPIError("History data is None - generation may have failed")
+            
+            if not isinstance(history, dict):
+                raise ComfyUIAPIError(f"Invalid history data type: {type(history)}, expected dict")
+            
+            outputs = history.get('outputs')
+            if outputs is None:
+                self.logger.warning("No outputs found in history data")
+                # Check if we have a different structure
+                if 'prompt_id' in history and len(history) > 1:
+                    self.logger.debug(f"History structure: {list(history.keys())}")
+                raise ComfyUIAPIError("No outputs found in generation result")
+            
+            if not isinstance(outputs, dict):
+                raise ComfyUIAPIError(f"Invalid outputs data type: {type(outputs)}, expected dict")
             
             for node_id, node_output in outputs.items():
+                if node_output is None:
+                    continue
+                    
+                if not isinstance(node_output, dict):
+                    self.logger.debug(f"Skipping invalid node output for {node_id}: {type(node_output)}")
+                    continue
+                    
                 if 'images' in node_output:
-                    for image_info in node_output['images']:
-                        filename = image_info['filename']
+                    node_images = node_output['images']
+                    if not isinstance(node_images, list):
+                        self.logger.debug(f"Skipping invalid images data for {node_id}: {type(node_images)}")
+                        continue
+                        
+                    for image_info in node_images:
+                        if not isinstance(image_info, dict):
+                            self.logger.debug(f"Skipping invalid image info: {type(image_info)}")
+                            continue
+                            
+                        filename = image_info.get('filename')
+                        if not filename:
+                            self.logger.debug(f"Skipping image with missing filename: {image_info}")
+                            continue
+                            
                         subfolder = image_info.get('subfolder', '')
                         image_type = image_info.get('type', 'output')
                         
@@ -627,15 +688,26 @@ class ImageGenerator:
                             'type': image_type
                         }
                         
-                        async with self.session.get(f"{self.base_url}/view", params=params) as response:
-                            if response.status == 200:
-                                image_data = await response.read()
-                                images.append(image_data)
-                                self.logger.debug(f"Downloaded image: {filename}")
-                            else:
-                                self.logger.error(f"Failed to download image {filename}: {response.status}")
+                        try:
+                            async with self.session.get(f"{self.base_url}/view", params=params) as response:
+                                if response.status == 200:
+                                    image_data = await response.read()
+                                    if image_data:  # Ensure we got actual data
+                                        images.append(image_data)
+                                        self.logger.debug(f"Downloaded image: {filename}")
+                                    else:
+                                        self.logger.warning(f"Downloaded empty image data for {filename}")
+                                else:
+                                    self.logger.error(f"Failed to download image {filename}: {response.status}")
+                        except Exception as download_error:
+                            self.logger.error(f"Error downloading image {filename}: {download_error}")
+                            continue
             
             if not images:
+                # Log the structure for debugging
+                self.logger.error(f"No images found in generation output. History structure: {list(history.keys()) if isinstance(history, dict) else type(history)}")
+                if isinstance(history, dict) and 'outputs' in history:
+                    self.logger.error(f"Outputs structure: {list(history['outputs'].keys()) if isinstance(history['outputs'], dict) else type(history['outputs'])}")
                 raise ComfyUIAPIError("No images found in generation output")
             
             self.logger.info(f"Downloaded {len(images)} images")
