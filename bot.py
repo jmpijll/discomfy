@@ -308,7 +308,7 @@ async def generate_command(
             )
             return
         
-        # Create interactive setup view with all parameters
+        # Respond immediately to avoid timeout
         await interaction.response.defer()
         
         # Create setup embed
@@ -333,6 +333,7 @@ async def generate_command(
         # Create interactive view with all configuration options
         view = CompleteSetupView(bot, prompt, interaction.user.id)
         
+        # Send the setup message
         await interaction.followup.send(embed=setup_embed, view=view)
         
     except Exception as e:
@@ -345,13 +346,14 @@ async def generate_command(
                 "An unexpected error occurred. Please try again later."
             )
         except:
+            # Last resort - try to send any error message
             try:
                 if interaction.response.is_done():
-                    await interaction.followup.send("❌ An unexpected error occurred. Please try again later.")
+                    await interaction.followup.send("❌ An unexpected error occurred. Please try again later.", ephemeral=True)
                 else:
-                    await interaction.response.send_message("❌ An unexpected error occurred. Please try again later.")
+                    await interaction.response.send_message("❌ An unexpected error occurred. Please try again later.", ephemeral=True)
             except:
-                bot.logger.error("Failed to send error response to user")
+                bot.logger.error("Failed to send any error response to user")
 
 # Complete interactive setup view with all parameters
 class CompleteSetupView(discord.ui.View):
@@ -380,72 +382,6 @@ class CompleteSetupView(discord.ui.View):
         self.add_item(ModelSelectMenu())
         self.add_item(ParameterSettingsButton())
         self.add_item(GenerateNowButton())
-    
-    async def update_model(self, model: str, interaction: discord.Interaction):
-        """Update model and fetch LoRAs, then refresh the view."""
-        self.model = model
-        
-        # Apply model-specific defaults
-        if model == "flux":
-            self.width = 1024
-            self.height = 1024
-            self.steps = 30
-            self.cfg = 5.0
-            self.negative_prompt = ""
-        elif model == "hidream":
-            self.width = 1216
-            self.height = 1216
-            self.steps = 50
-            self.cfg = 7.0
-            self.negative_prompt = "bad ugly jpeg artifacts"
-        
-        # Fetch LoRAs for this model
-        try:
-            async with self.bot.image_generator as gen:
-                all_loras = await gen.get_available_loras()
-                self.loras = gen.filter_loras_by_model(all_loras, model)
-        except Exception as e:
-            self.bot.logger.error(f"Failed to fetch LoRAs: {e}")
-            self.loras = []
-        
-        # Clear existing items and rebuild view
-        self.clear_items()
-        self.add_item(ModelSelectMenu())
-        
-        # Add LoRA selection if available
-        if self.loras:
-            self.add_item(LoRASelectMenu(self.loras))
-            if self.selected_lora:
-                self.add_item(LoRAStrengthButton())
-        
-        self.add_item(ParameterSettingsButton())
-        self.add_item(GenerateNowButton())
-        
-        # Update the embed
-        model_display = "Flux" if model == "flux" else "HiDream"
-        updated_embed = discord.Embed(
-            title="🎨 Image Generation Setup",
-            description=f"**Prompt:** {self.prompt[:200]}{'...' if len(self.prompt) > 200 else ''}\n\n" +
-                       f"**Model:** {model_display}\n" +
-                       f"**Size:** {self.width}x{self.height} | **Steps:** {self.steps} | **CFG:** {self.cfg}",
-            color=discord.Color.blue()
-        )
-        
-        status_text = f"✅ **Model Selected:** {model_display}\n"
-        if self.loras:
-            status_text += f"📋 **Available LoRAs:** {len(self.loras)}\n"
-        status_text += f"⚙️ **Settings:** Ready (click 'Adjust Settings' to customize)\n"
-        status_text += f"🚀 **Ready to generate!**"
-        
-        updated_embed.add_field(
-            name="📊 Current Configuration",
-            value=status_text,
-            inline=False
-        )
-        
-        updated_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
-        
-        await interaction.response.edit_message(embed=updated_embed, view=self)
     
     async def on_timeout(self):
         """Called when the view times out."""
@@ -1389,7 +1325,87 @@ class ModelSelectMenu(discord.ui.Select):
             return
         
         selected_model = self.values[0]
-        await view.update_model(selected_model, interaction)
+        
+        # Respond immediately to avoid timeout
+        await interaction.response.defer()
+        
+        try:
+            # Update model and apply defaults
+            view.model = selected_model
+            
+            # Apply model-specific defaults
+            if selected_model == "flux":
+                view.width = 1024
+                view.height = 1024
+                view.steps = 30
+                view.cfg = 5.0
+                view.negative_prompt = ""
+            elif selected_model == "hidream":
+                view.width = 1216
+                view.height = 1216
+                view.steps = 50
+                view.cfg = 7.0
+                view.negative_prompt = "bad ugly jpeg artifacts"
+            
+            # Fetch LoRAs for this model
+            try:
+                async with view.bot.image_generator as gen:
+                    all_loras = await gen.get_available_loras()
+                    view.loras = gen.filter_loras_by_model(all_loras, selected_model)
+            except Exception as e:
+                view.bot.logger.error(f"Failed to fetch LoRAs: {e}")
+                view.loras = []
+            
+            # Clear existing items and rebuild view
+            view.clear_items()
+            view.add_item(ModelSelectMenu())
+            
+            # Add LoRA selection if available
+            if view.loras:
+                view.add_item(LoRASelectMenu(view.loras))
+                if view.selected_lora:
+                    view.add_item(LoRAStrengthButton())
+            
+            view.add_item(ParameterSettingsButton())
+            view.add_item(GenerateNowButton())
+            
+            # Update the embed
+            model_display = "Flux" if selected_model == "flux" else "HiDream"
+            updated_embed = discord.Embed(
+                title="🎨 Image Generation Setup",
+                description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}\n\n" +
+                           f"**Model:** {model_display}\n" +
+                           f"**Size:** {view.width}x{view.height} | **Steps:** {view.steps} | **CFG:** {view.cfg}",
+                color=discord.Color.blue()
+            )
+            
+            status_text = f"✅ **Model Selected:** {model_display}\n"
+            if view.loras:
+                status_text += f"📋 **Available LoRAs:** {len(view.loras)}\n"
+            else:
+                status_text += f"📋 **LoRAs:** None available\n"
+            status_text += f"⚙️ **Settings:** Ready (click 'Adjust Settings' to customize)\n"
+            status_text += f"🚀 **Ready to generate!**"
+            
+            updated_embed.add_field(
+                name="📊 Current Configuration",
+                value=status_text,
+                inline=False
+            )
+            
+            updated_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+            
+            await interaction.edit_original_response(embed=updated_embed, view=view)
+            
+        except Exception as e:
+            view.bot.logger.error(f"Error in model selection: {e}")
+            try:
+                await interaction.followup.send(
+                    f"❌ Error updating model: {str(e)[:100]}...",
+                    ephemeral=True
+                )
+            except:
+                pass
 
 
 class ParameterSettingsButton(discord.ui.Button):
@@ -1601,31 +1617,185 @@ class GenerateNowButton(discord.ui.Button):
             )
             return
         
+        # Respond immediately to avoid timeout
         await interaction.response.defer()
         
-        # Delete the setup message to clean up chat
         try:
-            await interaction.delete_original_response()
-        except:
-            pass  # If deletion fails, continue anyway
-        
-        # Create generation parameters
-        generation_params = {
-            'prompt': view.prompt,
-            'negative_prompt': view.negative_prompt,
-            'workflow_name': workflow_name,
-            'model': view.model,
-            'width': view.width,
-            'height': view.height,
-            'steps': view.steps,
-            'cfg': view.cfg,
-            'batch_size': view.batch_size,
-            'seed': view.seed
-        }
-        
-        # Start generation using the existing generation logic
-        generation_view = GenerationSetupView(view.bot, generation_params, view.loras, view.user_id)
-        await generation_view._start_generation(interaction, view.selected_lora, view.lora_strength)
+            # Create generation parameters
+            generation_params = {
+                'prompt': view.prompt,
+                'negative_prompt': view.negative_prompt,
+                'workflow_name': workflow_name,
+                'model': view.model,
+                'width': view.width,
+                'height': view.height,
+                'steps': view.steps,
+                'cfg': view.cfg,
+                'batch_size': view.batch_size,
+                'seed': view.seed
+            }
+            
+            # Start generation directly without creating another view
+            # Send progress update
+            model_display = "Flux" if view.model == "flux" else "HiDream"
+            lora_info = f" with LoRA '{view.selected_lora}' (strength: {view.lora_strength})" if view.selected_lora else " (no LoRA)"
+            
+            progress_embed = discord.Embed(
+                title=f"🎨 Generating Image - {model_display}",
+                description=f"🎨 Creating your image with prompt: `{view.prompt[:100]}{'...' if len(view.prompt) > 100 else ''}`\n"
+                           f"🤖 Model: {model_display}{lora_info}\n"
+                           f"📏 Size: {view.width}x{view.height} | "
+                           f"🔧 Steps: {view.steps} | ⚙️ CFG: {view.cfg}\n"
+                           f"🔄 Generating {view.batch_size} image{'s' if view.batch_size > 1 else ''}...",
+                color=discord.Color.blue()
+            )
+            
+            await interaction.edit_original_response(embed=progress_embed, view=None)
+            
+            # Progress callback for updates
+            settings_text = f"Model: {model_display} | Size: {view.width}x{view.height} | " + \
+                           f"Steps: {view.steps} | CFG: {view.cfg} | " + \
+                           f"Batch: {view.batch_size}"
+            if view.selected_lora:
+                settings_text += f" | LoRA: {view.selected_lora} ({view.lora_strength})"
+            
+            progress_callback = await view.bot._create_unified_progress_callback(
+                interaction,
+                "Image Generation",
+                view.prompt,
+                settings_text
+            )
+            
+            # Generate image
+            async with view.bot.image_generator as gen:
+                image_data, generation_info = await gen.generate_image(
+                    prompt=view.prompt,
+                    negative_prompt=view.negative_prompt,
+                    workflow_name=workflow_name,
+                    width=view.width,
+                    height=view.height,
+                    steps=view.steps,
+                    cfg=view.cfg,
+                    batch_size=view.batch_size,
+                    seed=view.seed,
+                    lora_name=view.selected_lora,
+                    lora_strength=view.lora_strength,
+                    progress_callback=progress_callback
+                )
+            
+            # Send final completion status update
+            try:
+                final_progress = ProgressInfo()
+                final_progress.mark_completed()
+                await progress_callback(final_progress)
+                view.bot.logger.info("✅ Sent final completion status to Discord")
+                
+                # Small delay to ensure the completion message is visible
+                await asyncio.sleep(1)
+            except Exception as progress_error:
+                view.bot.logger.warning(f"Failed to send final progress update: {progress_error}")
+            
+            # Save image
+            filename = get_unique_filename(f"discord_{interaction.user.id}")
+            output_path = save_output_image(image_data, filename)
+            file_data = image_data
+            
+            # Create success embed
+            success_embed = discord.Embed(
+                title=f"✅ Image Generated Successfully - {model_display}!",
+                description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}",
+                color=discord.Color.green()
+            )
+            
+            # Add generation details
+            details_text = f"**Size:** {view.width}x{view.height}\n" + \
+                          f"**Steps:** {view.steps} | **CFG:** {view.cfg}\n" + \
+                          f"**Seed:** {generation_info.get('seed', 'Unknown')}\n" + \
+                          f"**Images:** {generation_info.get('num_images', 1)}"
+            
+            success_embed.add_field(
+                name="Generation Details",
+                value=details_text,
+                inline=True
+            )
+            
+            # Add model and LoRA info
+            model_info = f"**Model:** {model_display}\n"
+            if view.selected_lora:
+                model_info += f"**LoRA:** {view.selected_lora}\n**LoRA Strength:** {view.lora_strength}"
+            else:
+                model_info += f"**LoRA:** None"
+            
+            success_embed.add_field(
+                name="Model Info",
+                value=model_info,
+                inline=True
+            )
+            
+            success_embed.add_field(
+                name="Technical Info",
+                value=f"**Workflow:** {generation_info.get('workflow', 'Default')}\n"
+                      f"**Prompt ID:** {generation_info.get('prompt_id', 'Unknown')[:8]}...",
+                inline=True
+            )
+            
+            success_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+            
+            # Create action buttons view
+            post_gen_view = PostGenerationView(
+                bot=view.bot,
+                original_image_data=file_data,
+                generation_info=generation_info,
+                user_id=interaction.user.id
+            )
+            
+            # Send the final result
+            file = discord.File(BytesIO(file_data), filename=filename)
+            
+            try:
+                # Try to edit the original response with the file
+                await interaction.edit_original_response(
+                    embed=success_embed,
+                    attachments=[file],
+                    view=post_gen_view
+                )
+                view.bot.logger.info(f"Successfully sent image via edit_original_response for {interaction.user}")
+                
+            except Exception as send_error:
+                view.bot.logger.error(f"Error sending final image: {send_error}")
+                # Try sending as followup
+                try:
+                    await interaction.followup.send(
+                        embed=success_embed,
+                        file=discord.File(BytesIO(file_data), filename=filename),  # Create new file object
+                        view=post_gen_view
+                    )
+                    view.bot.logger.info(f"Successfully sent image via followup for {interaction.user}")
+                except Exception as followup_error:
+                    view.bot.logger.error(f"Failed to send followup image: {followup_error}")
+            
+            view.bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id}) with model: {view.model}")
+            
+            # Clean up old outputs
+            cleanup_old_outputs(view.bot.config.generation.output_limit)
+            
+        except Exception as e:
+            view.bot.logger.error(f"Unexpected error in generation: {e}")
+            view.bot.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            try:
+                error_embed = discord.Embed(
+                    title="❌ Generation Failed",
+                    description=f"An error occurred during generation: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                    color=discord.Color.red()
+                )
+                await interaction.edit_original_response(embed=error_embed, view=None)
+            except:
+                # If we can't edit, try followup
+                try:
+                    await interaction.followup.send("❌ Generation failed. Please try again.", ephemeral=True)
+                except:
+                    view.bot.logger.error("Failed to send error response to user")
 
 async def main():
     """Main function to run the bot."""
@@ -1639,11 +1809,17 @@ async def main():
         ]
     )
     
-    # Explicitly disable debug logging for all modules
+    # Explicitly disable debug logging for all modules - more restrictive
+    logging.getLogger().setLevel(logging.INFO)
     logging.getLogger('image_gen').setLevel(logging.INFO)
     logging.getLogger('video_gen').setLevel(logging.INFO)
     logging.getLogger('discord').setLevel(logging.WARNING)
     logging.getLogger('aiohttp').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    logging.getLogger('websockets').setLevel(logging.WARNING)
+    
+    # Disable all debug logging globally
+    logging.disable(logging.DEBUG)
     
     # Create logs directory
     Path("logs").mkdir(exist_ok=True)
