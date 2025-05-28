@@ -9,13 +9,14 @@ import traceback
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Dict, Any
+import time
 
 import discord
 from discord.ext import commands
 from discord import app_commands
 
 from config import get_config, BotConfig, validate_discord_token, validate_comfyui_url
-from image_gen import ImageGenerator, ComfyUIAPIError, save_output_image, cleanup_old_outputs, get_unique_filename
+from image_gen import ImageGenerator, ComfyUIAPIError, save_output_image, cleanup_old_outputs, get_unique_filename, ProgressInfo
 from video_gen import VideoGenerator, save_output_video, get_unique_video_filename
 
 class ComfyUIBot(commands.Bot):
@@ -122,8 +123,6 @@ class ComfyUIBot(commands.Bot):
     
     def _check_rate_limit(self, user_id: int) -> bool:
         """Check if user is rate limited."""
-        import time
-        
         current_time = time.time()
         
         # Clean old entries (older than 1 minute)
@@ -208,6 +207,64 @@ class ComfyUIBot(commands.Bot):
                 self.logger.error(f"Failed to send progress embed: {e}")
         except Exception as e:
             self.logger.error(f"Failed to send progress embed: {e}")
+
+    async def _create_unified_progress_callback(
+        self, 
+        interaction: discord.Interaction, 
+        operation_type: str,
+        prompt: str = "",
+        settings_text: str = ""
+    ):
+        """Create a unified progress callback for consistent progress tracking.
+        
+        Args:
+            interaction: Discord interaction to update
+            operation_type: Type of operation (e.g., "Image Generation", "Upscaling", "Video Generation")
+            prompt: User prompt (optional)
+            settings_text: Settings text for footer (optional)
+        """
+        async def progress_callback(progress: ProgressInfo):
+            try:
+                title, description, color = progress.get_user_friendly_status()
+                
+                # Customize title based on operation type
+                if progress.status == "running":
+                    title = f"🎨 {operation_type}"
+                elif progress.status == "completed":
+                    title = f"✅ {operation_type} Complete"
+                elif progress.status == "queued":
+                    title = f"⏳ {operation_type} Queued"
+                else:
+                    title = f"🔄 Starting {operation_type}"
+                
+                # Add prompt to description if provided
+                if prompt and len(prompt.strip()) > 0:
+                    prompt_preview = prompt[:80] + "..." if len(prompt) > 80 else prompt
+                    description = f"🎨 **Prompt:** `{prompt_preview}`\n\n{description}"
+                
+                embed = discord.Embed(
+                    title=title,
+                    description=description,
+                    color=color
+                )
+                
+                # Add settings in footer if provided
+                if settings_text:
+                    embed.set_footer(text=settings_text)
+                
+                # Always use edit_original_response since we already responded
+                await interaction.edit_original_response(embed=embed)
+                
+            except discord.NotFound:
+                # Interaction expired, log but don't crash
+                self.logger.warning(f"Discord interaction expired for user {interaction.user.id}")
+            except discord.HTTPException as e:
+                # Log HTTP errors but don't crash
+                self.logger.warning(f"Failed to update progress for user {interaction.user.id}: {e}")
+            except Exception as e:
+                self.logger.warning(f"Failed to update progress: {e}")
+        
+        return progress_callback
 
 # Slash command for image generation
 @app_commands.command(name="generate", description="Generate images using ComfyUI")
@@ -308,30 +365,12 @@ async def generate_command(
         )
         
         # Progress callback for updates
-        async def progress_callback(status: str, queue_position: int = 0):
-            try:
-                if queue_position > 0:
-                    description = f"⏳ Queue position: {queue_position}\n📊 Status: {status.title()}"
-                else:
-                    description = f"📊 Status: {status.title()}"
-                
-                embed = discord.Embed(
-                    title="⏳ Generating Image",
-                    description=f"🎨 Prompt: `{prompt[:80]}{'...' if len(prompt) > 80 else ''}`\n\n{description}",
-                    color=discord.Color.blue()
-                )
-                
-                # Always use edit_original_response since we already responded
-                await interaction.edit_original_response(embed=embed)
-                
-            except discord.NotFound:
-                # Interaction expired, log but don't crash
-                bot.logger.warning(f"Discord interaction expired for user {interaction.user.id}")
-            except discord.HTTPException as e:
-                # Log HTTP errors but don't crash
-                bot.logger.warning(f"Failed to update progress for user {interaction.user.id}: {e}")
-            except Exception as e:
-                bot.logger.warning(f"Failed to update progress: {e}")
+        progress_callback = await bot._create_unified_progress_callback(
+            interaction,
+            "Image Generation",
+            prompt,
+            f"Size: {width}x{height} | Steps: {steps} | CFG: {cfg} | Batch: {batch_size}"
+        )
         
         # Generate image
         try:
@@ -508,6 +547,14 @@ class PostGenerationView(discord.ui.View):
         await interaction.response.send_message("🔍 Starting upscaling process...", ephemeral=True)
         
         try:
+            # Progress callback for upscaling
+            progress_callback = await self.bot._create_unified_progress_callback(
+                interaction,
+                "Image Upscaling",
+                self.generation_info.get('prompt', ''),
+                f"Factor: 2x | Denoise: 0.35 | Steps: 20 | CFG: 7.0"
+            )
+            
             # Generate upscaled image using ComfyUI
             async with self.bot.image_generator as gen:
                 # Use the upscale workflow with image data directly
@@ -518,7 +565,8 @@ class PostGenerationView(discord.ui.View):
                     upscale_factor=2.0,
                     denoise=0.35,
                     steps=20,
-                    cfg=7.0
+                    cfg=7.0,
+                    progress_callback=progress_callback
                 )
             
             # Create success embed
@@ -570,19 +618,12 @@ class PostGenerationView(discord.ui.View):
         
         try:
             # Progress callback for video generation
-            async def video_progress_callback(status: str, queue_position: int = 0):
-                try:
-                    if queue_position > 0:
-                        description = f"⏳ Queue position: {queue_position}\n📊 Status: {status.title()}"
-                    else:
-                        description = f"📊 Status: {status.title()}"
-                    
-                    await interaction.edit_original_response(
-                        content=f"🎬 Generating video...\n{description}"
-                    )
-                except:
-                    # Ignore errors in progress updates
-                    pass
+            progress_callback = await self.bot._create_unified_progress_callback(
+                interaction,
+                "Video Generation",
+                self.generation_info.get('prompt', ''),
+                f"Resolution: 720x720 | Length: 81 frames | Strength: 0.7"
+            )
             
             # Generate video using ComfyUI
             async with self.bot.video_generator as gen:
@@ -597,7 +638,7 @@ class PostGenerationView(discord.ui.View):
                     length=81,
                     strength=0.7,
                     input_image_data=self.original_image_data,
-                    progress_callback=video_progress_callback
+                    progress_callback=progress_callback
                 )
             
             # Create success embed

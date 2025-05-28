@@ -12,16 +12,194 @@ import requests
 import random
 from io import BytesIO
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Dict, Any, List, Optional, Tuple, Union, Callable
 from PIL import Image
 import aiohttp
 import time
+import threading
 
 from config import get_config, BotConfig
 
 class ComfyUIAPIError(Exception):
     """Custom exception for ComfyUI API errors."""
     pass
+
+class ProgressInfo:
+    """Class to hold simplified progress information for users."""
+    def __init__(self):
+        self.status = "initializing"  # initializing, queued, running, completed, failed
+        self.queue_position = 0
+        self.start_time = time.time()
+        self.percentage = 0.0
+        self.estimated_time_remaining = None
+        self.phase = "Preparing"  # User-friendly phase description
+        
+        # Internal tracking (not shown to users)
+        self._total_nodes = 0
+        self._completed_nodes = 0
+        self._current_step = 0
+        self._total_steps = 0
+        self._last_update_time = time.time()
+        self._progress_history = []  # For better time estimation
+        
+    def update_queue_status(self, position: int):
+        """Update queue position."""
+        self.status = "queued"
+        self.queue_position = position
+        self.phase = f"In queue (#{position})"
+        self.percentage = 0.0
+        
+    def update_execution_start(self, total_nodes: int):
+        """Update when execution starts."""
+        self.status = "running"
+        self.queue_position = 0
+        self._total_nodes = total_nodes
+        self.start_time = time.time()
+        self._last_update_time = time.time()
+        self.phase = "Starting generation"
+        self.percentage = 5.0  # Show some initial progress
+        
+    def update_node_progress(self, completed: int, current_node: str = None):
+        """Update node execution progress with user-friendly phases."""
+        self._completed_nodes = completed
+        current_time = time.time()
+        
+        if self._total_nodes > 0:
+            # Calculate base percentage (reserve last 10% for finalization)
+            base_percentage = (self._completed_nodes / self._total_nodes) * 90
+            self.percentage = min(90, max(5, base_percentage))
+            
+            # Update user-friendly phase based on progress
+            progress_ratio = self._completed_nodes / self._total_nodes
+            if progress_ratio < 0.1:
+                self.phase = "Initializing"
+            elif progress_ratio < 0.3:
+                self.phase = "Processing prompt"
+            elif progress_ratio < 0.7:
+                self.phase = "Generating image"
+            elif progress_ratio < 0.9:
+                self.phase = "Refining details"
+            else:
+                self.phase = "Finalizing"
+        
+        # Track progress for time estimation
+        self._progress_history.append((current_time, self.percentage))
+        # Keep only last 10 data points
+        if len(self._progress_history) > 10:
+            self._progress_history.pop(0)
+            
+        self._last_update_time = current_time
+            
+    def update_step_progress(self, current: int, total: int):
+        """Update K-Sampler step progress."""
+        self._current_step = current
+        self._total_steps = total
+        
+        if self._total_steps > 0 and self.status == "running":
+            # Add step-level granularity to the percentage
+            if self._total_nodes > 0:
+                # Calculate step progress within current node
+                step_progress = (self._current_step / self._total_steps) * (90 / self._total_nodes)
+                base_progress = (self._completed_nodes / self._total_nodes) * 90
+                self.percentage = min(90, max(5, base_progress + step_progress))
+            
+            # Update phase for sampling
+            if self._current_step > 0:
+                self.phase = f"Sampling ({current}/{total})"
+            
+    def estimate_time_remaining(self):
+        """Estimate time remaining based on progress history."""
+        if len(self._progress_history) < 2 or self.percentage <= 5:
+            # Not enough data for estimation
+            self.estimated_time_remaining = None
+            return None
+            
+        # Use linear regression on recent progress
+        recent_history = self._progress_history[-5:]  # Last 5 data points
+        if len(recent_history) < 2:
+            return None
+            
+        # Calculate average progress rate
+        time_diff = recent_history[-1][0] - recent_history[0][0]
+        progress_diff = recent_history[-1][1] - recent_history[0][1]
+        
+        if time_diff <= 0 or progress_diff <= 0:
+            return None
+            
+        progress_rate = progress_diff / time_diff  # percentage per second
+        remaining_progress = 100 - self.percentage
+        
+        if progress_rate > 0:
+            self.estimated_time_remaining = remaining_progress / progress_rate
+            # Cap at reasonable maximum (10 minutes)
+            self.estimated_time_remaining = min(self.estimated_time_remaining, 600)
+        else:
+            self.estimated_time_remaining = None
+            
+        return self.estimated_time_remaining
+        
+    def mark_completed(self):
+        """Mark the process as completed."""
+        self.status = "completed"
+        self.percentage = 100.0
+        self.phase = "Complete"
+        self.estimated_time_remaining = 0
+        
+    def format_time(self, seconds: float) -> str:
+        """Format time in a human-readable way."""
+        if seconds is None or seconds <= 0:
+            return "Unknown"
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+        else:
+            return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
+            
+    def get_progress_bar(self, length: int = 20) -> str:
+        """Generate a visual progress bar."""
+        filled_length = int(length * self.percentage // 100)
+        return "█" * filled_length + "░" * (length - filled_length)
+        
+    def get_user_friendly_status(self) -> tuple[str, str, int]:
+        """Get user-friendly status information.
+        
+        Returns:
+            tuple: (title, description, color_value)
+        """
+        if self.status == "queued":
+            title = "⏳ In Queue"
+            description = f"📍 Position #{self.queue_position} in queue\n⏱️ Waiting to start..."
+            color = 0xFFA500  # Orange
+            
+        elif self.status == "running":
+            title = "🎨 Generating"
+            progress_bar = self.get_progress_bar()
+            description = f"📊 {self.percentage:.0f}% `{progress_bar}`\n"
+            description += f"🔄 {self.phase}\n"
+            
+            # Add time information
+            elapsed = time.time() - self.start_time
+            description += f"⏱️ Elapsed: {self.format_time(elapsed)}"
+            
+            if self.estimated_time_remaining and self.estimated_time_remaining > 0:
+                description += f" | ETA: {self.format_time(self.estimated_time_remaining)}"
+                
+            color = 0x3498DB  # Blue
+            
+        elif self.status == "completed":
+            title = "✅ Complete"
+            progress_bar = self.get_progress_bar()
+            total_time = time.time() - self.start_time
+            description = f"📊 100% `{progress_bar}`\n⏱️ Total time: {self.format_time(total_time)}"
+            color = 0x2ECC71  # Green
+            
+        else:  # initializing or other
+            title = "🔄 Starting"
+            description = f"⚙️ {self.phase}..."
+            color = 0x3498DB  # Blue
+            
+        return title, description, color
 
 class ImageGenerator:
     """Handles image generation using ComfyUI API."""
@@ -199,12 +377,149 @@ class ImageGenerator:
             self.logger.error(f"Failed to queue prompt: {e}")
             raise ComfyUIAPIError(f"Failed to queue prompt: {e}")
     
-    async def _wait_for_completion(self, prompt_id: str, progress_callback=None) -> Dict[str, Any]:
-        """Wait for prompt completion and return the history."""
+    async def _wait_for_completion_with_websocket(
+        self, 
+        prompt_id: str, 
+        workflow: Dict[str, Any],
+        progress_callback: Optional[Callable[[ProgressInfo], None]] = None
+    ) -> Dict[str, Any]:
+        """Wait for prompt completion using WebSocket for real-time progress."""
+        try:
+            progress = ProgressInfo()
+            progress.total_nodes = len(workflow)
+            
+            if progress_callback:
+                await progress_callback(progress)
+            
+            # Create WebSocket connection in a separate thread
+            ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws?clientId={str(uuid.uuid4())}"
+            
+            # Use asyncio to handle WebSocket in the same event loop
+            import websockets
+            
+            async with websockets.connect(ws_url) as websocket:
+                self.logger.info(f"WebSocket connected for prompt {prompt_id}")
+                
+                while True:
+                    try:
+                        # Check if completed first
+                        async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
+                            if response.status == 200:
+                                history = await response.json()
+                                if prompt_id in history:
+                                    progress.mark_completed()
+                                    if progress_callback:
+                                        await progress_callback(progress)
+                                    self.logger.info(f"Prompt {prompt_id} completed successfully")
+                                    return history[prompt_id]
+                        
+                        # Check queue status
+                        async with self.session.get(f"{self.base_url}/queue") as response:
+                            if response.status == 200:
+                                queue_data = await response.json()
+                                queue_running = queue_data.get('queue_running', [])
+                                queue_pending = queue_data.get('queue_pending', [])
+                                
+                                is_running = any(item[1] == prompt_id for item in queue_running)
+                                is_pending = any(item[1] == prompt_id for item in queue_pending)
+                                
+                                if is_pending:
+                                    queue_position = sum(1 for item in queue_pending if item[1] != prompt_id and queue_pending.index(item) < next(i for i, item in enumerate(queue_pending) if item[1] == prompt_id)) + 1
+                                    progress.update_queue_status(queue_position)
+                                    if progress_callback:
+                                        await progress_callback(progress)
+                                elif is_running:
+                                    if progress.status != "running":
+                                        progress.update_execution_start(len(workflow))
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                elif not is_running and not is_pending:
+                                    # Prompt is no longer in queue, check history one more time
+                                    async with self.session.get(f"{self.base_url}/history/{prompt_id}") as hist_response:
+                                        if hist_response.status == 200:
+                                            history = await hist_response.json()
+                                            if prompt_id in history:
+                                                progress.mark_completed()
+                                                if progress_callback:
+                                                    await progress_callback(progress)
+                                                return history[prompt_id]
+                                    
+                                    raise ComfyUIAPIError(f"Prompt {prompt_id} disappeared from queue without completion")
+                        
+                        # Listen for WebSocket messages with timeout
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                            if isinstance(message, str):
+                                data = json.loads(message)
+                                
+                                if data.get('type') == 'progress':
+                                    # K-Sampler progress
+                                    progress_data = data.get('data', {})
+                                    current_step = progress_data.get('value', 0)
+                                    max_steps = progress_data.get('max', 1)
+                                    progress.update_step_progress(current_step, max_steps)
+                                    progress.estimate_time_remaining()
+                                    if progress_callback:
+                                        await progress_callback(progress)
+                                
+                                elif data.get('type') == 'executing':
+                                    # Node execution
+                                    exec_data = data.get('data', {})
+                                    current_node = exec_data.get('node')
+                                    if current_node and current_node != progress._completed_nodes:
+                                        progress.update_node_progress(progress._completed_nodes + 1, current_node)
+                                        progress.estimate_time_remaining()
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                    
+                                    # Check for completion
+                                    if current_node is None and exec_data.get('prompt_id') == prompt_id:
+                                        progress.mark_completed()
+                                        if progress_callback:
+                                            await progress_callback(progress)
+                                        break
+                                
+                                elif data.get('type') == 'execution_cached':
+                                    # Cached nodes
+                                    cached_data = data.get('data', {})
+                                    cached_nodes = cached_data.get('nodes', [])
+                                    progress._completed_nodes += len(cached_nodes)
+                                    progress.update_node_progress(progress._completed_nodes)
+                                    if progress_callback:
+                                        await progress_callback(progress)
+                        
+                        except asyncio.TimeoutError:
+                            # Continue the loop if no WebSocket message received
+                            continue
+                        
+                        await asyncio.sleep(0.5)
+                        
+                    except Exception as e:
+                        self.logger.warning(f"Error in WebSocket loop: {e}")
+                        await asyncio.sleep(1.0)
+                        continue
+                
+                # Final check for completion
+                async with self.session.get(f"{self.base_url}/history/{prompt_id}") as response:
+                    if response.status == 200:
+                        history = await response.json()
+                        if prompt_id in history:
+                            return history[prompt_id]
+                
+                raise ComfyUIAPIError(f"Failed to get completion status for prompt {prompt_id}")
+                
+        except Exception as e:
+            self.logger.error(f"Error in WebSocket progress monitoring: {e}")
+            # Fallback to polling method
+            return await self._wait_for_completion_polling(prompt_id, progress_callback)
+    
+    async def _wait_for_completion_polling(self, prompt_id: str, progress_callback=None) -> Dict[str, Any]:
+        """Fallback polling method for progress monitoring."""
         try:
             max_wait_time = self.config.comfyui.timeout
             check_interval = 2.0
             start_time = time.time()
+            progress = ProgressInfo()
             
             while time.time() - start_time < max_wait_time:
                 # Check history for completion
@@ -212,6 +527,9 @@ class ImageGenerator:
                     if response.status == 200:
                         history = await response.json()
                         if prompt_id in history:
+                            progress.mark_completed()
+                            if progress_callback:
+                                await progress_callback(progress)
                             self.logger.info(f"Prompt {prompt_id} completed successfully")
                             return history[prompt_id]
                 
@@ -233,14 +551,25 @@ class ImageGenerator:
                                 if hist_response.status == 200:
                                     history = await hist_response.json()
                                     if prompt_id in history:
+                                        progress.mark_completed()
+                                        if progress_callback:
+                                            await progress_callback(progress)
                                         return history[prompt_id]
                             
                             raise ComfyUIAPIError(f"Prompt {prompt_id} disappeared from queue without completion")
                         
                         if progress_callback:
-                            status = "running" if is_running else "pending"
-                            queue_position = len(queue_pending) if is_pending else 0
-                            await progress_callback(status, queue_position)
+                            if is_pending:
+                                queue_position = len(queue_pending)
+                                progress.update_queue_status(queue_position)
+                            elif is_running:
+                                progress.status = "running"
+                                progress.queue_position = 0
+                                elapsed = time.time() - start_time
+                                # Rough estimate based on elapsed time
+                                progress.percentage = min(90, (elapsed / 60) * 100)  # Assume ~1 minute average
+                            
+                            await progress_callback(progress)
                 
                 await asyncio.sleep(check_interval)
             
@@ -404,7 +733,7 @@ class ImageGenerator:
             prompt_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion(prompt_id, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
             
             # Download images
             images = await self._download_images(history)
@@ -523,7 +852,7 @@ class ImageGenerator:
             prompt_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion(prompt_id, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
             
             # Download upscaled image
             images = await self._download_images(history)

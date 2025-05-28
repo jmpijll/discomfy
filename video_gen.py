@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 import aiohttp
 
-from image_gen import ImageGenerator, ComfyUIAPIError
+from image_gen import ImageGenerator, ComfyUIAPIError, ProgressInfo
 from config import get_config, BotConfig
 
 class VideoGenerator(ImageGenerator):
@@ -192,7 +192,7 @@ class VideoGenerator(ImageGenerator):
             prompt_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion(prompt_id, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
             
             # Download video
             video_data, filename = await self._download_videos(history)
