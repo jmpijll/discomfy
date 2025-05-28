@@ -458,15 +458,13 @@ class ImageGenerator:
             return await self._wait_for_completion_polling(prompt_id, progress_callback)
     
     async def _wait_for_completion_polling(self, prompt_id: str, progress_callback=None) -> Dict[str, Any]:
-        """Simplified polling method focused on getting results."""
+        """Simplified polling method focused on getting results with proper ComfyUI queue integration."""
         try:
             max_wait_time = self.config.comfyui.timeout
             check_interval = 3.0  # Check every 3 seconds
             start_time = time.time()
             
             progress = ProgressInfo()
-            progress.status = "queued"
-            progress.phase = "Processing request"
             
             self.logger.info(f"Starting polling for prompt {prompt_id}")
             
@@ -483,8 +481,7 @@ class ImageGenerator:
                                 if progress_callback:
                                     try:
                                         await progress_callback(progress)
-                                    except Exception as callback_error:
-                                        # Don't spam logs with callback errors
+                                    except Exception:
                                         pass
                                 return history_data[prompt_id]
                 except Exception as e:
@@ -492,58 +489,75 @@ class ImageGenerator:
                     if (time.time() - start_time) % 30 < check_interval:
                         self.logger.warning(f"Error checking history: {e}")
                 
-                # Check queue status for position information (not detailed monitoring)
+                # Check ComfyUI queue status for proper queue integration
                 try:
                     async with self.session.get(f"{self.base_url}/queue") as response:
                         if response.status == 200:
                             queue_data = await response.json()
-                            # Add null checks to prevent NoneType errors
+                            
                             if queue_data is not None:
                                 queue_running = queue_data.get('queue_running', [])
                                 queue_pending = queue_data.get('queue_pending', [])
                                 
-                                # Ensure queue data is valid and handle different API response formats
-                                if queue_running is not None and queue_pending is not None:
-                                    # Check if our prompt is currently running
-                                    is_running = False
-                                    if isinstance(queue_running, list):
-                                        for item in queue_running:
-                                            if isinstance(item, dict) and item.get('prompt_id') == prompt_id:
+                                # Check if our prompt is currently running
+                                is_running = False
+                                if isinstance(queue_running, list):
+                                    for item in queue_running:
+                                        # ComfyUI queue format: [number, {prompt_id: ...}]
+                                        if isinstance(item, list) and len(item) >= 2:
+                                            if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
                                                 is_running = True
+                                                self.logger.debug(f"Prompt {prompt_id} is currently running")
                                                 break
-                                            elif isinstance(item, list) and len(item) > 1 and isinstance(item[1], dict):
-                                                # Handle nested list format: [number, {prompt_id: ...}]
-                                                if item[1].get('prompt_id') == prompt_id:
-                                                    is_running = True
-                                                    break
-                                    
-                                    if is_running:
-                                        progress.status = "running"
-                                        progress.phase = "Processing"
-                                    else:
-                                        # Check position in queue
-                                        position = None
-                                        if isinstance(queue_pending, list):
-                                            for i, item in enumerate(queue_pending):
-                                                if isinstance(item, dict) and item.get('prompt_id') == prompt_id:
-                                                    position = i + 1
-                                                    break
-                                                elif isinstance(item, list) and len(item) > 1 and isinstance(item[1], dict):
-                                                    # Handle nested list format: [number, {prompt_id: ...}]
-                                                    if item[1].get('prompt_id') == prompt_id:
-                                                        position = i + 1
-                                                        break
-                                        
-                                        if position:
-                                            progress.update_queue_status(position)
+                                        # Also handle direct dict format just in case
+                                        elif isinstance(item, dict) and item.get('prompt_id') == prompt_id:
+                                            is_running = True
+                                            self.logger.debug(f"Prompt {prompt_id} is currently running (direct format)")
+                                            break
                                 
-                                # Send progress update periodically
-                                if progress_callback and (time.time() - start_time) % 10 < check_interval:
+                                if is_running:
+                                    # Prompt is actively running
+                                    if progress.status != "running":
+                                        progress.status = "running"
+                                        progress.phase = "Generating"
+                                        progress.queue_position = 0
+                                        self.logger.info(f"Prompt {prompt_id} started running")
+                                else:
+                                    # Check if prompt is in pending queue
+                                    queue_position = None
+                                    if isinstance(queue_pending, list):
+                                        for i, item in enumerate(queue_pending):
+                                            # ComfyUI queue format: [number, {prompt_id: ...}]
+                                            if isinstance(item, list) and len(item) >= 2:
+                                                if isinstance(item[1], dict) and item[1].get('prompt_id') == prompt_id:
+                                                    queue_position = i + 1
+                                                    break
+                                            # Also handle direct dict format just in case
+                                            elif isinstance(item, dict) and item.get('prompt_id') == prompt_id:
+                                                queue_position = i + 1
+                                                break
+                                    
+                                    if queue_position is not None:
+                                        # Prompt is in queue
+                                        if progress.status != "queued" or progress.queue_position != queue_position:
+                                            progress.update_queue_status(queue_position)
+                                            self.logger.info(f"Prompt {prompt_id} is ##{queue_position} in queue")
+                                    else:
+                                        # Prompt not found in queue - might be starting up or just completed
+                                        if progress.status == "initializing":
+                                            progress.status = "running"
+                                            progress.phase = "Starting"
+                                            progress.queue_position = 0
+                                
+                                # Send progress update every 10 seconds
+                                elapsed = time.time() - start_time
+                                if progress_callback and (elapsed % 10 < check_interval or progress.status != getattr(progress, '_last_status', None)):
                                     try:
                                         await progress_callback(progress)
-                                    except Exception as callback_error:
-                                        # Don't spam logs with callback errors
+                                        progress._last_status = progress.status
+                                    except Exception:
                                         pass
+                                        
                 except Exception as e:
                     # Only warn occasionally to reduce log spam
                     if (time.time() - start_time) % 30 < check_interval:
@@ -555,7 +569,10 @@ class ImageGenerator:
                 # Log progress every 30 seconds only
                 elapsed = time.time() - start_time
                 if elapsed % 30 < check_interval and elapsed > 30:
-                    self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s elapsed)")
+                    status_info = f"Status: {progress.status}"
+                    if progress.status == "queued":
+                        status_info += f" (#{progress.queue_position})"
+                    self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s elapsed) - {status_info}")
             
             # Timeout reached
             raise ComfyUIAPIError(f"Timeout waiting for prompt {prompt_id} after {max_wait_time} seconds")
