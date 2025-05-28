@@ -443,7 +443,6 @@ class ImageGenerator:
                                 if progress_callback:
                                     try:
                                         await progress_callback(progress)
-                                        self.logger.debug("✅ Final progress callback sent successfully")
                                     except Exception as callback_error:
                                         self.logger.warning(f"Failed to send final progress callback: {callback_error}")
                                 return history[prompt_id]
@@ -489,7 +488,6 @@ class ImageGenerator:
                                             if progress_callback:
                                                 try:
                                                     await progress_callback(progress)
-                                                    self.logger.debug("✅ Final progress callback sent successfully (from queue check)")
                                                 except Exception as callback_error:
                                                     self.logger.warning(f"Failed to send final progress callback: {callback_error}")
                                             return history[prompt_id]
