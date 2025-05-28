@@ -269,30 +269,42 @@ class ComfyUIBot(commands.Bot):
         
         return progress_callback
 
-# Slash command for image generation
-@app_commands.command(name="generate", description="Generate images using ComfyUI")
+# Slash command for image generation with model and LoRA selection
+@app_commands.command(name="generate", description="Generate images using ComfyUI with model and LoRA selection")
 @app_commands.describe(
     prompt="The prompt for image generation",
+    model="Choose the AI model to use (default: Flux)",
+    lora="Select a LoRA (will be filtered based on selected model)",
+    lora_strength="Strength of the selected LoRA (0.0-2.0, default: 1.0)",
     negative_prompt="Negative prompt (things to avoid)",
     width="Image width (default: 1024)",
-    height="Image height (default: 1024)",
-    steps="Number of sampling steps (default: 50)",
+    height="Image height (default: 1024)", 
+    steps="Number of sampling steps (default: 30 for Flux, 50 for HiDream)",
     cfg="CFG scale (default: 5.0)",
     batch_size="Number of images to generate (default: 1)",
     seed="Random seed (leave empty for random)"
 )
+@app_commands.choices(
+    model=[
+        app_commands.Choice(name="Flux (Default)", value="flux"),
+        app_commands.Choice(name="HiDream", value="hidream")
+    ]
+)
 async def generate_command(
     interaction: discord.Interaction,
     prompt: str,
+    model: str = "flux",
+    lora: str = "none",
+    lora_strength: float = 1.0,
     negative_prompt: str = "",
     width: int = 1024,
     height: int = 1024,
-    steps: int = 50,
+    steps: Optional[int] = None,
     cfg: float = 5.0,
     batch_size: int = 1,
     seed: Optional[int] = None
 ):
-    """Generate images using ComfyUI."""
+    """Generate images using ComfyUI with model and LoRA selection."""
     bot: ComfyUIBot = interaction.client
     
     try:
@@ -339,6 +351,32 @@ async def generate_command(
             )
             return
         
+        # Validate LoRA strength
+        if lora_strength < 0.0 or lora_strength > 2.0:
+            await bot._send_error_embed(
+                interaction,
+                "Invalid LoRA Strength",
+                "LoRA strength must be between 0.0 and 2.0."
+            )
+            return
+        
+        # Determine workflow based on model
+        workflow_name = f"{model}_lora"
+        workflow_config = bot.config.workflows.get(workflow_name)
+        
+        if not workflow_config or not workflow_config.enabled:
+            await bot._send_error_embed(
+                interaction,
+                "Model Not Available",
+                f"The '{model}' model is not available or disabled."
+            )
+            return
+        
+        # Set default steps based on model if not specified
+        if steps is None:
+            steps = workflow_config.default_params.get('steps', 30)
+        
+        # Validate steps
         if steps < 1 or steps > 150:
             await bot._send_error_embed(
                 interaction,
@@ -355,24 +393,42 @@ async def generate_command(
             )
             return
         
-        # Use default image workflow
-        selected_workflow = bot.config.generation.default_workflow
+        # Set model-specific defaults for dimensions
+        if model == "hidream" and width == 1024 and height == 1024:
+            # Use HiDream's preferred dimensions
+            width = workflow_config.default_params.get('width', 1216)
+            height = workflow_config.default_params.get('height', 1216)
+        
+        # Use model-specific default negative prompt if none provided
+        if not negative_prompt.strip():
+            negative_prompt = workflow_config.default_params.get('negative_prompt', "")
+        
+        # Prepare LoRA name for workflow
+        lora_name = lora if lora != "none" else None
         
         # Send initial response
+        model_display = "Flux" if model == "flux" else "HiDream"
+        lora_info = f" with LoRA '{lora}' (strength: {lora_strength})" if lora_name else " (no LoRA)"
+        
         await bot._send_progress_embed(
             interaction,
-            "Generating Image",
+            f"Generating Image - {model_display}",
             f"🎨 Creating your image with prompt: `{prompt[:100]}{'...' if len(prompt) > 100 else ''}`\n"
+            f"🤖 Model: {model_display}{lora_info}\n"
             f"📏 Size: {width}x{height} | 🔧 Steps: {steps} | ⚙️ CFG: {cfg}\n"
             f"🔄 Generating {batch_size} image{'s' if batch_size > 1 else ''}..."
         )
         
         # Progress callback for updates
+        settings_text = f"Model: {model_display} | Size: {width}x{height} | Steps: {steps} | CFG: {cfg} | Batch: {batch_size}"
+        if lora_name:
+            settings_text += f" | LoRA: {lora} ({lora_strength})"
+        
         progress_callback = await bot._create_unified_progress_callback(
             interaction,
             "Image Generation",
             prompt,
-            f"Size: {width}x{height} | Steps: {steps} | CFG: {cfg} | Batch: {batch_size}"
+            settings_text
         )
         
         # Generate image
@@ -381,13 +437,15 @@ async def generate_command(
                 image_data, generation_info = await gen.generate_image(
                     prompt=prompt,
                     negative_prompt=negative_prompt,
-                    workflow_name=selected_workflow,
+                    workflow_name=workflow_name,
                     width=width,
                     height=height,
                     steps=steps,
                     cfg=cfg,
                     batch_size=batch_size,
                     seed=seed,
+                    lora_name=lora_name,
+                    lora_strength=lora_strength,
                     progress_callback=progress_callback
                 )
             
@@ -414,18 +472,30 @@ async def generate_command(
         
         # Create success embed
         success_embed = discord.Embed(
-            title="✅ Image Generated Successfully!",
+            title=f"✅ Image Generated Successfully - {model_display}!",
             description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}",
             color=discord.Color.green()
         )
         
         # Add generation details
+        details_text = f"**Size:** {width}x{height}\n**Steps:** {steps} | **CFG:** {cfg}\n**Seed:** {generation_info.get('seed', 'Unknown')}\n**Images:** {generation_info.get('num_images', 1)}"
+        
         success_embed.add_field(
             name="Generation Details",
-            value=f"**Size:** {width}x{height}\n"
-                  f"**Steps:** {steps} | **CFG:** {cfg}\n"
-                  f"**Seed:** {generation_info.get('seed', 'Unknown')}\n"
-                  f"**Images:** {generation_info.get('num_images', 1)}",
+            value=details_text,
+            inline=True
+        )
+        
+        # Add model and LoRA info
+        model_info = f"**Model:** {model_display}\n"
+        if lora_name:
+            model_info += f"**LoRA:** {lora}\n**LoRA Strength:** {lora_strength}"
+        else:
+            model_info += f"**LoRA:** None"
+        
+        success_embed.add_field(
+            name="Model Info",
+            value=model_info,
             inline=True
         )
         
@@ -496,7 +566,7 @@ async def generate_command(
             except Exception as final_error:
                 bot.logger.error(f"Complete failure to send image: {final_error}")
         
-        bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id})")
+        bot.logger.info(f"Image generation process completed for {interaction.user} (ID: {interaction.user.id}) with model: {model}")
         
         # Clean up old outputs
         cleanup_old_outputs(bot.config.generation.output_limit)
@@ -697,7 +767,7 @@ async def help_command(interaction: discord.Interaction):
     """Show help information about the bot."""
     embed = discord.Embed(
         title="🎨 ComfyUI Discord Bot Help",
-        description="Generate amazing AI images directly in Discord!",
+        description="Generate amazing AI images directly in Discord with multiple models and LoRA support!",
         color=discord.Color.blue()
     )
     
@@ -705,24 +775,47 @@ async def help_command(interaction: discord.Interaction):
         name="📝 Basic Usage",
         value="Use `/generate` with a prompt to create images:\n"
               "`/generate prompt:a beautiful sunset over mountains`\n"
-              "`/generate prompt:cyberpunk city width:1536 height:1024`",
+              "`/generate prompt:cyberpunk city model:flux`\n"
+              "`/generate prompt:anime character model:hidream lora:hidream_anime.safetensors`",
         inline=False
     )
     
     embed.add_field(
         name="🔧 Available Commands",
-        value="• `/generate` - Generate AI images\n"
+        value="• `/generate` - Generate AI images with model and LoRA selection\n"
+              "• `/loras` - List available LoRAs for each model\n"
               "• `/status` - Check bot and ComfyUI status\n"
               "• `/help` - Show this help message",
         inline=False
     )
     
     embed.add_field(
+        name="🤖 Available Models",
+        value="• **Flux** (Default) - High-quality, fast generation\n"
+              "• **HiDream** - Specialized for detailed, artistic images\n"
+              "\n*Each model has its own set of compatible LoRAs*",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎯 LoRA System",
+        value="• **LoRAs** add specific styles or effects to your images\n"
+              "• Use `/loras` to see available options for each model\n"
+              "• **Flux LoRAs:** General-purpose styles and effects\n"
+              "• **HiDream LoRAs:** Must contain 'hidream' in filename\n"
+              "• **Strength:** 0.0-2.0 (default: 1.0) - higher = stronger effect",
+        inline=False
+    )
+    
+    embed.add_field(
         name="⚙️ Parameters",
         value="• **prompt** - What you want to generate (required)\n"
+              "• **model** - Choose Flux or HiDream (default: Flux)\n"
+              "• **lora** - Select a LoRA effect (optional)\n"
+              "• **lora_strength** - LoRA intensity 0.0-2.0 (default: 1.0)\n"
               "• **negative_prompt** - What to avoid in the image\n"
               "• **width/height** - Image dimensions (256-2048)\n"
-              "• **steps** - Quality vs speed (1-150)\n"
+              "• **steps** - Quality vs speed (1-150, auto-defaults per model)\n"
               "• **cfg** - How closely to follow prompt (1.0-30.0)\n"
               "• **batch_size** - Number of images (1-4)\n"
               "• **seed** - For reproducible results",
@@ -739,25 +832,28 @@ async def help_command(interaction: discord.Interaction):
     )
     
     embed.add_field(
-        name="💡 Tips",
-        value="• Be descriptive in your prompts for better results\n"
-              "• Use negative prompts to avoid unwanted elements\n"
+        name="💡 Pro Tips",
+        value="• Use `/loras` to find available LoRAs for your chosen model\n"
+              "• Start with default settings and adjust gradually\n"
+              "• **Flux:** Great for photorealistic and general images\n"
+              "• **HiDream:** Excellent for artistic and stylized images\n"
               "• Higher steps = better quality but slower generation\n"
               "• CFG 5-8 works well for most prompts\n"
-              "• Try different seeds for variations of the same prompt",
+              "• Experiment with LoRA strengths (0.5-1.5 range usually works best)",
         inline=False
     )
     
     embed.add_field(
         name="🔧 Example Commands",
-        value="`/generate prompt:cyberpunk city at night, neon lights`\n"
-              "`/generate prompt:cute cat negative_prompt:blurry, low quality`\n"
-              "`/generate prompt:fantasy landscape width:1536 height:1024 steps:75`\n"
+        value="`/generate prompt:cyberpunk city at night model:flux`\n"
+              "`/generate prompt:anime girl model:hidream lora:hidream_anime.safetensors lora_strength:0.8`\n"
+              "`/generate prompt:fantasy landscape width:1536 height:1024 steps:50`\n"
+              "`/loras model:flux` - Show Flux LoRAs\n"
               "`/status` - Check if ComfyUI is online",
         inline=False
     )
     
-    embed.set_footer(text="Powered by ComfyUI | Made with ❤️")
+    embed.set_footer(text="Powered by ComfyUI | Phase 4: Advanced Model & LoRA Support | Made with ❤️")
     
     await interaction.response.send_message(embed=embed)
 
@@ -814,6 +910,107 @@ async def status_command(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
+# Command to list available LoRAs
+@app_commands.command(name="loras", description="List available LoRAs for each model")
+@app_commands.describe(
+    model="Filter LoRAs by model type (optional)"
+)
+@app_commands.choices(
+    model=[
+        app_commands.Choice(name="All Models", value="all"),
+        app_commands.Choice(name="Flux", value="flux"),
+        app_commands.Choice(name="HiDream", value="hidream")
+    ]
+)
+async def loras_command(interaction: discord.Interaction, model: str = "all"):
+    """List available LoRAs for each model."""
+    bot: ComfyUIBot = interaction.client
+    
+    await interaction.response.defer()
+    
+    try:
+        # Fetch LoRAs from ComfyUI
+        async with bot.image_generator as gen:
+            all_loras = await gen.get_available_loras()
+        
+        if not all_loras:
+            embed = discord.Embed(
+                title="📋 Available LoRAs",
+                description="❌ No LoRAs found. Make sure ComfyUI is running and has LoRAs installed.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed)
+            return
+        
+        # Filter LoRAs by model if specified
+        if model != "all":
+            filtered_loras = bot.image_generator.filter_loras_by_model(all_loras, model)
+        else:
+            filtered_loras = all_loras
+        
+        # Create embed
+        embed = discord.Embed(
+            title="📋 Available LoRAs",
+            description=f"Found {len(filtered_loras)} LoRA{'s' if len(filtered_loras) != 1 else ''}" + 
+                       (f" for {model.title()}" if model != "all" else ""),
+            color=discord.Color.blue()
+        )
+        
+        if model == "all":
+            # Group by model type
+            flux_loras = [lora for lora in filtered_loras if lora['type'] == 'flux']
+            hidream_loras = [lora for lora in filtered_loras if lora['type'] == 'hidream']
+            
+            if flux_loras:
+                flux_list = "\n".join([f"• `{lora['filename']}`" for lora in flux_loras[:10]])
+                if len(flux_loras) > 10:
+                    flux_list += f"\n... and {len(flux_loras) - 10} more"
+                embed.add_field(
+                    name=f"🚀 Flux LoRAs ({len(flux_loras)})",
+                    value=flux_list,
+                    inline=False
+                )
+            
+            if hidream_loras:
+                hidream_list = "\n".join([f"• `{lora['filename']}`" for lora in hidream_loras[:10]])
+                if len(hidream_loras) > 10:
+                    hidream_list += f"\n... and {len(hidream_loras) - 10} more"
+                embed.add_field(
+                    name=f"🎨 HiDream LoRAs ({len(hidream_loras)})",
+                    value=hidream_list,
+                    inline=False
+                )
+        else:
+            # Show all LoRAs for the specific model
+            lora_list = "\n".join([f"• `{lora['filename']}`" for lora in filtered_loras[:20]])
+            if len(filtered_loras) > 20:
+                lora_list += f"\n... and {len(filtered_loras) - 20} more"
+            
+            embed.add_field(
+                name=f"LoRAs for {model.title()}",
+                value=lora_list if lora_list else "No LoRAs found for this model.",
+                inline=False
+            )
+        
+        embed.add_field(
+            name="💡 Usage Tips",
+            value="• Copy the exact filename (with `.safetensors`) to use in `/generate`\n"
+                  "• LoRA strength can be adjusted from 0.0 to 2.0 (default: 1.0)\n"
+                  "• Use `lora:none` or leave empty to generate without LoRA",
+            inline=False
+        )
+        
+        await interaction.followup.send(embed=embed)
+        
+    except Exception as e:
+        bot.logger.error(f"Error fetching LoRAs: {e}")
+        embed = discord.Embed(
+            title="❌ Error",
+            description="Failed to fetch LoRAs from ComfyUI. Please try again later.",
+            color=discord.Color.red()
+        )
+        await interaction.followup.send(embed=embed)
+
 async def main():
     """Main function to run the bot."""
     # Set up logging
@@ -845,6 +1042,7 @@ async def main():
         bot.tree.add_command(generate_command)
         bot.tree.add_command(help_command)
         bot.tree.add_command(status_command)
+        bot.tree.add_command(loras_command)
         
         logger.info("🤖 Bot is starting up...")
         
