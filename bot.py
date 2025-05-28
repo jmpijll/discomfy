@@ -347,7 +347,17 @@ async def generate_command(
             )
             return
         
-        # Determine workflow based on model
+        # Set default steps based on model if not specified
+        if steps is None:
+            # Model-specific defaults
+            if model == "flux":
+                steps = 30
+            elif model == "hidream":
+                steps = 50
+            else:
+                steps = 30  # fallback default
+        
+        # Determine workflow based on model and validate it exists
         workflow_name = f"{model}_lora"
         workflow_config = bot.config.workflows.get(workflow_name)
         
@@ -358,10 +368,6 @@ async def generate_command(
                 f"The '{model}' model is not available or disabled."
             )
             return
-        
-        # Set default steps based on model if not specified
-        if steps is None:
-            steps = workflow_config.default_params.get('steps', 30)
         
         # Validate steps
         if steps < 1 or steps > 150:
@@ -380,15 +386,18 @@ async def generate_command(
             )
             return
         
-        # Set model-specific defaults for dimensions
+        # Set model-specific defaults for dimensions and negative prompt
         if model == "hidream" and width == 1024 and height == 1024:
             # Use HiDream's preferred dimensions
-            width = workflow_config.default_params.get('width', 1216)
-            height = workflow_config.default_params.get('height', 1216)
+            width = 1216
+            height = 1216
         
         # Use model-specific default negative prompt if none provided
         if not negative_prompt.strip():
-            negative_prompt = workflow_config.default_params.get('negative_prompt', "")
+            if model == "hidream":
+                negative_prompt = "bad ugly jpeg artifacts"
+            else:
+                negative_prompt = ""  # Flux default is empty
         
         # Create interactive LoRA selection view
         await interaction.response.defer()
