@@ -196,10 +196,10 @@ class VideoGenerator(ImageGenerator):
             )
             
             # Queue prompt
-            prompt_id = await self._queue_prompt(updated_workflow)
+            prompt_id, client_id = await self._queue_prompt(updated_workflow)
             
             # Wait for completion
-            history = await self._wait_for_completion_with_websocket(prompt_id, updated_workflow, progress_callback)
+            history = await self._wait_for_completion_with_websocket(prompt_id, client_id, updated_workflow, progress_callback)
             
             # Download video
             video_data, filename = await self._download_videos(history)
