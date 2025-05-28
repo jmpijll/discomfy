@@ -502,20 +502,37 @@ class ImageGenerator:
                                 queue_running = queue_data.get('queue_running', [])
                                 queue_pending = queue_data.get('queue_pending', [])
                                 
-                                # Ensure queue data is valid
+                                # Ensure queue data is valid and handle different API response formats
                                 if queue_running is not None and queue_pending is not None:
                                     # Check if our prompt is currently running
-                                    is_running = any(item and item.get('prompt_id') == prompt_id for item in queue_running)
+                                    is_running = False
+                                    if isinstance(queue_running, list):
+                                        for item in queue_running:
+                                            if isinstance(item, dict) and item.get('prompt_id') == prompt_id:
+                                                is_running = True
+                                                break
+                                            elif isinstance(item, list) and len(item) > 1 and isinstance(item[1], dict):
+                                                # Handle nested list format: [number, {prompt_id: ...}]
+                                                if item[1].get('prompt_id') == prompt_id:
+                                                    is_running = True
+                                                    break
+                                    
                                     if is_running:
                                         progress.status = "running"
                                         progress.phase = "Processing"
                                     else:
                                         # Check position in queue
                                         position = None
-                                        for i, item in enumerate(queue_pending):
-                                            if item and item.get('prompt_id') == prompt_id:
-                                                position = i + 1
-                                                break
+                                        if isinstance(queue_pending, list):
+                                            for i, item in enumerate(queue_pending):
+                                                if isinstance(item, dict) and item.get('prompt_id') == prompt_id:
+                                                    position = i + 1
+                                                    break
+                                                elif isinstance(item, list) and len(item) > 1 and isinstance(item[1], dict):
+                                                    # Handle nested list format: [number, {prompt_id: ...}]
+                                                    if item[1].get('prompt_id') == prompt_id:
+                                                        position = i + 1
+                                                        break
                                         
                                         if position:
                                             progress.update_queue_status(position)
@@ -862,7 +879,7 @@ class ImageGenerator:
         cfg: float = 7.0,
         seed: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Update upscale workflow parameters with user inputs."""
+        """Update upscale workflow parameters with minimal changes - only image and prompts."""
         try:
             # Create a copy to avoid modifying the original
             updated_workflow = json.loads(json.dumps(workflow))
@@ -873,33 +890,29 @@ class ImageGenerator:
                 seed = random.randint(0, 2**32 - 1)
             
             # Update workflow parameters based on the upscale workflow structure
+            # Only change essential parameters: input image and prompts
             for node_id, node_data in updated_workflow.items():
                 class_type = node_data.get('class_type')
                 
                 if class_type == 'LoadImage':
-                    # Update input image
+                    # Update input image - this is essential
                     node_data['inputs']['image'] = input_image_path
                 
                 elif class_type == 'CLIPTextEncode':
                     title = node_data.get('_meta', {}).get('title', '')
                     if 'positive' in title.lower():
-                        node_data['inputs']['text'] = prompt
+                        # Only update if prompt is provided
+                        if prompt:
+                            node_data['inputs']['text'] = prompt
                     elif 'negative' in title.lower():
-                        node_data['inputs']['text'] = negative_prompt
+                        # Only update if negative prompt is provided
+                        if negative_prompt:
+                            node_data['inputs']['text'] = negative_prompt
                 
-                elif class_type == 'UltimateSDUpscale':
-                    # Update upscaling parameters
-                    node_data['inputs']['upscale_by'] = upscale_factor
-                    node_data['inputs']['seed'] = seed
-                    node_data['inputs']['steps'] = steps
-                    node_data['inputs']['cfg'] = cfg
-                    node_data['inputs']['denoise'] = denoise
-                
-                elif class_type == 'LoraTextExtractor-b1f83aa2':
-                    # Update LoRA text extractor with prompt
-                    node_data['inputs']['text'] = prompt
+                # Note: We're NOT changing UltimateSDUpscale parameters to preserve workflow defaults
+                # Note: We're NOT changing LoraTextExtractor to avoid interfering with workflow
             
-            self.logger.debug(f"Updated upscale workflow parameters: input={input_image_path}, factor={upscale_factor}x")
+            self.logger.debug(f"Updated upscale workflow parameters: input={input_image_path}, minimal changes")
             return updated_workflow
             
         except Exception as e:

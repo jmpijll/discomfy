@@ -1027,16 +1027,15 @@ class PostGenerationView(discord.ui.View):
             # Generate video using ComfyUI
             async with self.bot.video_generator as gen:
                 video_data, filename, video_info = await gen.generate_video(
+                    input_image_data=self.original_image_data,
                     prompt=self.generation_info.get('prompt', ''),
                     negative_prompt=self.generation_info.get('negative_prompt', ''),
-                    workflow_name="video_wan_vace_14B_i2v",
-                    width=720,
-                    height=720,
-                    steps=6,
-                    cfg=1.0,
+                    upscale_factor=2.0,
+                    denoise=0.35,
+                    steps=20,
+                    cfg=7.0,
                     length=81,
                     strength=0.7,
-                    input_image_data=self.original_image_data,
                     progress_callback=progress_callback
                 )
             
@@ -1896,7 +1895,7 @@ class IndividualImageView(discord.ui.View):
                 interaction,
                 "Image Upscaling",
                 f"Upscaling image #{self.image_index + 1}",
-                f"Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
+                f"Factor: 2x | Method: AI Super-Resolution | Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
             )
             
             # Perform upscaling
@@ -2002,15 +2001,23 @@ class IndividualImageView(discord.ui.View):
                 interaction,
                 "Video Generation",
                 f"Animating image #{self.image_index + 1}",
-                f"Creating 81-frame animation from {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')} image"
+                f"Resolution: 720x720 | Length: 81 frames | Steps: 6 | CFG: 1.0 | Strength: 0.7"
             )
             
             # Perform video generation
             async with self.bot.video_generator as gen:
-                video_data, video_info = await gen.generate_video(
-                    input_image_data=self.image_data,
+                video_data, filename, video_info = await gen.generate_video(
                     prompt=original_prompt,
+                    negative_prompt=self.generation_info.get('negative_prompt', ''),
+                    workflow_name=None,  # Use default video workflow
+                    width=720,
+                    height=720,
+                    steps=6,
+                    cfg=1.0,
                     length=81,
+                    strength=0.7,
+                    seed=None,
+                    input_image_data=self.image_data,
                     progress_callback=progress_callback
                 )
             
