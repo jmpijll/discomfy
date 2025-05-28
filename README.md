@@ -29,12 +29,43 @@ This bot is now feature-complete and ready for production deployment. All core f
 - **👥 Community Friendly**: Anyone can use action buttons on any generation
 - **⏰ Infinite Usage**: Buttons never expire and can be used multiple times
 - **🛡️ Rate Limiting**: Smart rate limiting to prevent abuse (5 requests/minute per user)
-- **📊 Real-time Progress**: Live progress updates during generation and processing
+- **📊 Real-time Progress**: Live progress updates with node execution tracking and 1-second intervals
 - **🔧 Configurable Parameters**: Width, height, steps, CFG, batch size, seed control
 - **📁 Auto-cleanup**: Automatic management of output files (100 file limit)
 - **🔄 Queue Management**: Improved concurrent request handling
 - **⚡ Enhanced Error Handling**: Better Discord interaction timeout protection
 - **🚫 Null Safety**: Robust API response validation to prevent crashes
+
+## 🚀 Enhanced Progress Tracking
+
+The bot now features **real-time progress tracking** that provides detailed information about your generation progress:
+
+### 📊 What You'll See:
+- **Accurate Progress Percentage**: Based on actual node execution progress, not just elapsed time
+- **Current Phase**: Descriptive status like "Processing prompt", "Generating image", "Sampling (15/20)"
+- **Real-time Updates**: Progress updates every second for smooth, responsive feedback
+- **Node Execution**: Track which nodes are running and how many are complete
+- **Step Progress**: See individual sampling steps (e.g., "Step 15/20" for KSampler)
+- **Time Estimation**: Improved ETA calculations based on actual progress
+- **Queue Position**: Live updates when waiting in ComfyUI's generation queue
+
+### 🔧 Technical Features:
+- **WebSocket Integration**: Uses ComfyUI's WebSocket API for real-time node execution tracking
+- **Cached Node Detection**: Automatically accounts for nodes that are skipped due to caching
+- **Fallback Support**: Automatically falls back to HTTP polling if WebSocket fails
+- **Rate Limit Friendly**: 1-second update intervals that don't overwhelm Discord or ComfyUI APIs
+
+### 📈 Progress Display Format:
+```
+🎨 Generating
+📊 67.3% ████████████░░░░░░░░
+🔄 Sampling (15/20)
+⏱️ Elapsed: 1m 23s | ETA: 32s
+🎯 Step: 15/20
+🔗 Nodes: 8/12
+```
+
+This enhanced tracking works for both **image generation** and **video generation**, giving you complete visibility into your AI creation process!
 
 ## 🚀 Installation & Setup
 
