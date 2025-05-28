@@ -379,6 +379,7 @@ class CompleteSetupView(discord.ui.View):
         self.selected_lora = None
         self.lora_strength = 1.0
         self.negative_prompt = ""
+        self.loras = []  # Initialize empty LoRA list
         
         # Default parameters based on model (will be set when model is selected)
         self.width = 1024
@@ -392,7 +393,7 @@ class CompleteSetupView(discord.ui.View):
         self.setup_message = None
         
         # Add model selection menu
-        self.add_item(ModelSelectMenu())
+        self.add_item(ModelSelectMenu(self.model))
         
         # Add parameter settings button
         self.add_item(ParameterSettingsButton())
@@ -638,7 +639,7 @@ class GenerationSetupView(discord.ui.View):
 class LoRASelectMenu(discord.ui.Select):
     """Select menu for choosing LoRA."""
     
-    def __init__(self, loras: list):
+    def __init__(self, loras: list, selected_lora: Optional[str] = None):
         # Ensure we have valid LoRAs and limit to 25 options (Discord limit)
         if not loras:
             # Create a dummy option since Discord requires at least one
@@ -648,6 +649,7 @@ class LoRASelectMenu(discord.ui.Select):
                 description="No compatible LoRAs found for this model"
             )]
             disabled = True
+            placeholder = "No LoRAs available"
         else:
             display_loras = loras[:25]  # Discord limit
             options = []
@@ -664,12 +666,26 @@ class LoRASelectMenu(discord.ui.Select):
                 options.append(discord.SelectOption(
                     label=label,
                     value=filename,
-                    description=description
+                    description=description,
+                    default=(selected_lora == filename)
                 ))
+            
             disabled = False
+            
+            # Set placeholder based on selection
+            if selected_lora:
+                # Find display name for selected LoRA
+                selected_display_name = "Unknown"
+                for lora in loras:
+                    if lora.get('filename') == selected_lora:
+                        selected_display_name = lora.get('display_name', lora.get('filename', 'Unknown'))
+                        break
+                placeholder = f"🎯 {selected_display_name} (Selected)"
+            else:
+                placeholder = "🎯 Choose a LoRA..."
         
         super().__init__(
-            placeholder="🎯 Choose a LoRA..." if not disabled else "No LoRAs available",
+            placeholder=placeholder,
             min_values=1,
             max_values=1,
             options=options,
@@ -712,9 +728,15 @@ class LoRASelectMenu(discord.ui.Select):
         if isinstance(view, CompleteSetupView):
             # Add LoRA strength button if not already present
             if view.selected_lora and not any(isinstance(item, LoRAStrengthButton) for item in view.children):
+                # Rebuild the view with updated placeholders to show selections
+                view.clear_items()
+                view.add_item(ModelSelectMenu(view.model))
+                view.add_item(LoRASelectMenu(view.loras, view.selected_lora))
                 view.add_item(LoRAStrengthButton())
+                view.add_item(ParameterSettingsButton())
+                view.add_item(GenerateNowButton())
                 
-                # Update the original message with the new button
+                # Update the original message with the new view and updated info
                 try:
                     model_display = "Flux" if view.model == "flux" else "HiDream"
                     updated_embed = discord.Embed(
@@ -814,6 +836,14 @@ class LoRAStrengthModal(discord.ui.Modal):
                 
                 # For CompleteSetupView, update the main embed
                 if isinstance(self.view, CompleteSetupView):
+                    # Rebuild the view to keep dropdowns showing current selections
+                    self.view.clear_items()
+                    self.view.add_item(ModelSelectMenu(self.view.model))
+                    self.view.add_item(LoRASelectMenu(self.view.loras, self.view.selected_lora))
+                    self.view.add_item(LoRAStrengthButton())
+                    self.view.add_item(ParameterSettingsButton())
+                    self.view.add_item(GenerateNowButton())
+                    
                     await interaction.response.send_message(
                         f"✅ **LoRA strength updated to {strength}**",
                         ephemeral=True
@@ -1301,13 +1331,14 @@ async def loras_command(interaction: discord.Interaction, model: str = "all"):
 class ModelSelectMenu(discord.ui.Select):
     """Select menu for choosing AI model."""
     
-    def __init__(self):
+    def __init__(self, selected_model: Optional[str] = None):
         options = [
             discord.SelectOption(
                 label="Flux (Default)",
                 value="flux",
                 description="High-quality, fast generation - 1024x1024, 30 steps",
-                emoji="🚀"
+                emoji="🚀",
+                default=(selected_model == "flux")
             ),
             discord.SelectOption(
                 label="HiDream",
@@ -1370,11 +1401,11 @@ class ModelSelectMenu(discord.ui.Select):
             
             # Clear existing items and rebuild view
             view.clear_items()
-            view.add_item(ModelSelectMenu())
+            view.add_item(ModelSelectMenu(selected_model))
             
             # Add LoRA selection if available
             if view.loras:
-                view.add_item(LoRASelectMenu(view.loras))
+                view.add_item(LoRASelectMenu(view.loras, view.selected_lora))
                 if view.selected_lora:
                     view.add_item(LoRAStrengthButton())
             
