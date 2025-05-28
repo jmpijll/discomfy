@@ -41,31 +41,34 @@ This bot is now feature-complete and ready for production deployment. All core f
 The bot now features **real-time progress tracking** that provides detailed information about your generation progress:
 
 ### 📊 What You'll See:
-- **Accurate Progress Percentage**: Based on actual node execution progress, not just elapsed time
-- **Current Phase**: Descriptive status like "Processing prompt", "Generating image", "Sampling (15/20)"
+- **Accurate Progress Percentage**: Based on actual sampling steps, not just elapsed time
+- **Current Phase**: Descriptive status like "Loading", "Sampling (152/161)", "Finalizing"
 - **Real-time Updates**: Progress updates every second for smooth, responsive feedback
 - **Node Execution**: Track which nodes are running and how many are complete
-- **Step Progress**: See individual sampling steps (e.g., "Step 15/20" for KSampler)
+- **Step Progress**: See individual sampling steps (e.g., "Step 152/161" for KSampler)
 - **Time Estimation**: Improved ETA calculations based on actual progress
 - **Queue Position**: Live updates when waiting in ComfyUI's generation queue
 
 ### 🔧 Technical Features:
 - **WebSocket Integration**: Uses ComfyUI's WebSocket API for real-time node execution tracking
+- **Client ID Handling**: Proper client_id management ensures detailed progress messages
+- **Step-Based Calculation**: Progress percentage based purely on sampling steps, not node count
 - **Cached Node Detection**: Automatically accounts for nodes that are skipped due to caching
 - **Fallback Support**: Automatically falls back to HTTP polling if WebSocket fails
 - **Rate Limit Friendly**: 1-second update intervals that don't overwhelm Discord or ComfyUI APIs
+- **Multi-Phase Support**: Handles video generation with multiple sampling phases (up to 161 steps)
 
 ### 📈 Progress Display Format:
 ```
-🎨 Generating
+🎨 Generating Image
 📊 67.3% ████████████░░░░░░░░
-🔄 Sampling (15/20)
+🔄 Sampling (152/161)
 ⏱️ Elapsed: 1m 23s | ETA: 32s
-🎯 Step: 15/20
-🔗 Nodes: 8/12
+🎯 Node: KSampler
+Resolution: 1024x1024 | Steps: 30 | CFG: 7.0 | Model: Flux
 ```
 
-This enhanced tracking works for both **image generation** and **video generation**, giving you complete visibility into your AI creation process!
+This enhanced tracking works for both **image generation** and **video generation**, giving you complete visibility into your AI creation process with accurate, step-based progress updates!
 
 ## 🚀 Installation & Setup
 

@@ -85,6 +85,74 @@
 
 ## Specific Implementation Rules
 
+### Progress Tracking Implementation (MANDATORY)
+**Real-time progress tracking using ComfyUI WebSocket API with HTTP polling fallback**
+
+#### WebSocket Integration Requirements:
+- **Client ID Handling**: Must retrieve `client_id` from ComfyUI status message before queuing prompts
+- **Proper Connection**: Connect to WebSocket first, get client_id, then submit prompt with that client_id
+- **Message Types**: Handle `progress`, `executing`, `executed`, `execution_success`, and `status` message types
+- **Step-Based Progress**: Calculate percentage based on sampling steps only, not node execution
+- **Fallback Support**: Use HTTP polling if WebSocket connection fails or hangs
+
+#### Implementation Pattern:
+```python
+# 1. Connect to WebSocket and get client_id
+async with websockets.connect(ws_url) as websocket:
+    status_message = await websocket.recv()
+    client_id = json.loads(status_message)['client_id']
+
+# 2. Submit prompt with client_id
+response = await session.post(f"{base_url}/prompt", json={
+    "client_id": client_id,
+    "prompt": workflow
+})
+
+# 3. Track progress via WebSocket messages
+while True:
+    message = await websocket.recv()
+    data = json.loads(message)
+    
+    if data['type'] == 'progress':
+        # Update step progress (e.g., 152/161)
+        current_step = data['data']['value']
+        total_steps = data['data']['max']
+        
+    elif data['type'] == 'executing':
+        # Track node execution
+        node_id = data['data']['node']
+        
+    elif data['type'] == 'execution_success':
+        # Generation completed
+        break
+```
+
+#### Progress Calculation Rules:
+- **Before First Sampling Step**: Show "Loading..." or "Preparing..." (0% progress)
+- **During Sampling**: Calculate percentage as `(current_step / total_steps) * 100`
+- **Multiple Sampling Nodes**: For video generation, handle multiple KSampler nodes with different step counts
+- **Final Processing**: Show 95-100% for post-sampling nodes (VAE decode, save, etc.)
+
+#### Error Handling Requirements:
+- **WebSocket Timeout**: 5-second timeout for client_id retrieval, 10-second for messages
+- **Connection Failure**: Graceful fallback to HTTP polling every 1 second
+- **Message Loss**: HTTP polling should continue if WebSocket stops sending messages
+- **Rate Limiting**: Ensure 1-second intervals don't overwhelm Discord API
+
+#### Progress Display Format:
+```
+🎨 Generating Image
+📊 67.3% ████████████░░░░░░░░
+🔄 Sampling (152/161)
+⏱️ Elapsed: 1m 23s | ETA: 32s
+🎯 Node: KSampler
+```
+
+#### Video Generation Specifics:
+- **Extended Timeout**: 10 minutes for video workflows vs 2 minutes for images
+- **Multiple Sampling Phases**: Handle different step counts for different video generation stages
+- **Progress Aggregation**: Combine multiple sampling nodes into single progress percentage
+
 ### Discord Integration
 - Use discord.py library with slash commands
 - Implement proper permission checks
