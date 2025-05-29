@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2025-01-29
+
+### Fixed
+- **Configuration Examples**: Updated `config.example.json` to match current workflow structure
+- **Workflow References**: Fixed outdated workflow names (`hidream_full_config-1` → `flux_lora`)
+- **Missing Workflows**: Added missing workflow configurations for `hidream_lora` and `video_wan_vace_14B_i2v`
+- **Security Settings**: Corrected rate limits and file type restrictions to match production values
+- **Video Support**: Added `.mp4` to allowed file types in example configuration
+- **Output Limits**: Updated example config to show correct output file limit (100 instead of 50)
+- **Environment Variables**: Cleaned up `env.example` to remove unused references
+
+### Changed
+- **Default Workflow**: Changed from `hidream_full_config-1` to `flux_lora` in example config
+- **Workflow Structure**: Simplified workflow configuration removing deprecated `parameters` mappings
+- **Rate Limits**: Updated to production values (5 per user, 20 global) in example
+- **Prompt Length**: Increased max prompt length to 2000 characters in example
+- **File Types**: Extended allowed file types to include video formats
+
+### Documentation
+- **Setup Instructions**: Example configuration files now accurately reflect current codebase
+- **Installation Guide**: Users can copy example files without needing manual corrections
+- **Workflow Configuration**: Clear examples of how to configure each workflow type
+- **Security Settings**: Proper rate limiting and file validation examples
+
 ## [1.1.1] - 2025-01-29
 
 ### Added

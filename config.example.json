@@ -13,29 +13,48 @@
     "retry_delay": 1.0
   },
   "generation": {
-    "default_workflow": "hidream_full_config-1",
+    "default_workflow": "flux_lora",
     "max_batch_size": 4,
-    "output_limit": 50,
+    "output_limit": 100,
     "default_width": 1024,
     "default_height": 1024,
-    "default_steps": 50,
+    "default_steps": 30,
     "default_cfg": 5.0
   },
   "workflows": {
-    "hidream_full_config-1": {
-      "file": "hidream_full_config-1.json",
-      "name": "HiDream Full Config",
-      "description": "High-quality image generation workflow",
-      "parameters": {
-        "prompt_node": "6",
-        "negative_prompt_node": "7",
-        "width_node": "5",
-        "height_node": "5",
-        "steps_node": "3",
-        "cfg_node": "3",
-        "seed_node": "3"
-      },
-      "enabled": true
+    "flux_lora": {
+      "name": "Flux with LoRA",
+      "description": "High-quality image generation with Flux model and LoRA support",
+      "file": "flux_lora.json",
+      "type": "image",
+      "model_type": "flux",
+      "enabled": true,
+      "supports_lora": true
+    },
+    "hidream_lora": {
+      "name": "HiDream with LoRA",
+      "description": "High-quality image generation with HiDream model and LoRA support",
+      "file": "hidream_lora.json",
+      "type": "image",
+      "model_type": "hidream",
+      "enabled": true,
+      "supports_lora": true
+    },
+    "upscale_config-1": {
+      "name": "Image Upscaling",
+      "description": "Upscale images to higher resolution",
+      "file": "upscale_config-1.json",
+      "type": "upscale",
+      "enabled": true,
+      "supports_lora": false
+    },
+    "video_wan_vace_14B_i2v": {
+      "name": "Image to Video",
+      "description": "Convert images to MP4 videos using WAN VACE model",
+      "file": "video_wan_vace_14B_i2v.json",
+      "type": "video",
+      "enabled": true,
+      "supports_lora": false
     }
   },
   "logging": {
@@ -46,9 +65,9 @@
     "backup_count": 5
   },
   "security": {
-    "rate_limit_per_user": 10,
-    "rate_limit_global": 100,
-    "allowed_file_types": [".png", ".jpg", ".jpeg", ".webp", ".gif"],
-    "max_prompt_length": 1000
+    "rate_limit_per_user": 5,
+    "rate_limit_global": 20,
+    "allowed_file_types": [".png", ".jpg", ".jpeg", ".webp", ".mp4", ".gif"],
+    "max_prompt_length": 2000
   }
 } 
