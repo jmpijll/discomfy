@@ -1,9 +1,36 @@
 # Changelog
 
-All notable changes to the Discord ComfyUI Bot project will be documented in this file.
+All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.1.1] - 2025-01-29
+
+### Added
+- **Extended Video Generation Timeout**: Increased from 10 minutes to 15 minutes (900 seconds)
+- **Enhanced Video Workflow Detection**: Added support for WanVaceToVideo, VHS_VideoCombine, and AnimateDiff nodes
+- **Parameter Selection Modals**: Interactive Discord modals for customizing upscale and animation parameters
+- **Upscale Parameter Selection**: Choose upscale ratio (2x/4x/8x), denoise strength, and sampling steps
+- **Animation Parameter Selection**: Choose frame count (81/121/161) and strength parameters
+- **Original Prompt Display**: Fixed animate and upscale functions to show original image prompts
+
+### Fixed
+- **Video Generation Timeouts**: Videos can now complete successfully in 5-10 minutes without timing out
+- **Workflow Detection Logic**: Properly identifies video workflows using WanVaceToVideo nodes
+- **Parameter Display**: Upscale and animate operations now show the correct original prompts
+- **Timeout Logging**: Clear indicators when video vs image workflow timeouts are applied
+
+### Changed
+- **Video Timeout Duration**: Extended from 600 seconds (10 min) to 900 seconds (15 min)
+- **User Experience**: Added interactive parameter selection before running upscale/animate operations
+- **Progress Tracking**: Maintains accuracy even with extended timeout durations
+
+### Technical
+- Enhanced video workflow detection with multiple node type support
+- Improved timeout handling for long-running video generation tasks
+- Added Discord modal components for parameter input
+- Maintained backward compatibility with existing workflows
 
 ## [1.1.0] - 2025-01-29
 
@@ -13,27 +40,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Client ID Management**: Proper client_id handling ensures detailed WebSocket messages
 - **Multi-Phase Video Support**: Enhanced tracking for video generation with up to 161 steps
 - **Fallback HTTP Polling**: Graceful degradation when WebSocket unavailable
-- **Enhanced Progress Display**: Shows current sampling step (e.g., "152/161") with accurate percentages
+- **Enhanced Progress Display**: Shows current sampling step (e.g., "152/161" for detailed tracking)
+- **Node Execution Tracking**: Real-time updates on which ComfyUI nodes are executing
+- **Cached Node Detection**: Automatically accounts for nodes skipped due to caching
+- **Time Estimation**: Improved ETA calculations based on actual step progress
+- **Queue Position Tracking**: Live updates when waiting in ComfyUI's generation queue
 
-### Fixed  
-- **Animate Function**: Now correctly displays original image prompt instead of generic text
-- **Upscale Function**: Now correctly displays original image prompt instead of generic text
-- **WebSocket Connection**: Proper client_id retrieval prevents empty progress messages
-- **Progress Updates**: 1-second intervals with accurate step-based calculations
-- **Video Generation**: Extended 10-minute timeout for complex video workflows
+### Fixed
+- **Progress Tracking Accuracy**: Now shows real progress instead of time-based estimates
+- **WebSocket Integration**: Proper client_id handling ensures reception of detailed messages
+- **Step Progress Calculation**: Percentage based on actual sampling steps, not node execution
+- **Video Generation Support**: Enhanced tracking for video workflows with multiple sampling phases
+- **Progress Update Frequency**: 1-second intervals provide smooth, responsive feedback
 
 ### Changed
-- **Progress Tracking**: Moved from node-based to step-based progress calculation
-- **WebSocket Implementation**: Complete rewrite with proper message handling
-- **Progress Display**: Enhanced format showing detailed sampling progress
-- **Error Handling**: Improved WebSocket timeout and fallback mechanisms
+- **Progress Display Format**: Enhanced with step counts, node information, and accurate percentages
+- **Update Frequency**: Increased from 10 seconds to 1 second for real-time feedback
+- **Timeout Detection**: Dynamic timeout based on workflow type (video vs image)
+- **Error Handling**: Improved WebSocket connection resilience with HTTP polling fallback
 
-### Technical Improvements
-- Added comprehensive WebSocket message type handling (`progress`, `executing`, `executed`, `execution_success`, `status`)
-- Implemented proper client_id workflow for ComfyUI WebSocket communication
-- Enhanced ProgressInfo class with step-based tracking and caching support
-- Added fallback mechanisms for WebSocket failures
-- Improved logging and debugging for progress tracking issues
+### Technical
+- Hybrid HTTP polling + WebSocket approach for maximum reliability
+- Comprehensive ComfyUI API message handling (progress, executing, executed, status)
+- Step-based progress calculation for accurate percentage reporting
+- Enhanced logging and debugging capabilities for progress tracking
+- Graceful fallback mechanisms when WebSocket unavailable
 
 ## [1.0.0] - 2024-05-29
 

@@ -21,11 +21,12 @@ This bot is now feature-complete and ready for production deployment. All core f
 
 ## ✨ Features
 
-### ✅ Current Features (Phase 1, 2 & 3 Complete)
+### ✅ Current Features (Complete & Production Ready)
 - **🎨 AI Image Generation**: Generate high-quality images using ComfyUI workflows
 - **⚡ Slash Commands**: Simple `/generate` command with customizable parameters
-- **🔍 Functional Upscaling**: 2x image upscaling with ComfyUI upscale workflow
-- **🎬 Video Generation**: Convert images to 720x720 MP4 animations (81 frames)
+- **🔍 Advanced Upscaling**: AI super-resolution with customizable parameters (2x/4x/8x ratio)
+- **🎬 Enhanced Video Generation**: Convert images to MP4 animations with extended 15-minute timeout
+- **⚙️ Parameter Selection Modals**: Interactive Discord modals for upscale and animation settings
 - **👥 Community Friendly**: Anyone can use action buttons on any generation
 - **⏰ Infinite Usage**: Buttons never expire and can be used multiple times
 - **🛡️ Rate Limiting**: Smart rate limiting to prevent abuse (5 requests/minute per user)
@@ -35,6 +36,7 @@ This bot is now feature-complete and ready for production deployment. All core f
 - **🔄 Queue Management**: Improved concurrent request handling
 - **⚡ Enhanced Error Handling**: Better Discord interaction timeout protection
 - **🚫 Null Safety**: Robust API response validation to prevent crashes
+- **🎯 Extended Video Timeout**: 15-minute timeout supports complex video generation
 
 ## 🚀 Enhanced Progress Tracking
 
@@ -69,6 +71,32 @@ Resolution: 1024x1024 | Steps: 30 | CFG: 7.0 | Model: Flux
 ```
 
 This enhanced tracking works for both **image generation** and **video generation**, giving you complete visibility into your AI creation process with accurate, step-based progress updates!
+
+## ⚙️ Interactive Parameter Selection
+
+The bot now features **interactive parameter selection modals** that give you full control over upscaling and video generation:
+
+### 🔍 **Upscale Parameters:**
+- **Upscale Ratio**: Choose between 2x, 4x, or 8x magnification
+- **Denoise Strength**: Adjust detail enhancement (0.1 - 1.0)
+- **Sampling Steps**: Control generation quality (10-50 steps)
+
+### 🎬 **Animation Parameters:**
+- **Frame Count**: Select 81, 121, or 161 frames for video length
+- **Strength**: Adjust animation intensity (0.1 - 1.0)
+- **Custom Settings**: Fine-tune your video generation
+
+### 🎯 **User Experience:**
+- **Before Generation**: Interactive Discord modals appear when you click Upscale or Animate
+- **Real-time Preview**: See parameter descriptions and defaults
+- **Validation**: Input validation prevents invalid parameters
+- **Original Prompts**: Your original image prompt is automatically used for upscaling/animation
+
+### ⏱️ **Extended Timeouts:**
+- **Video Generation**: Now supports up to **15 minutes** for complex video workflows
+- **Automatic Detection**: Bot automatically applies extended timeout for video workflows
+- **Smart Detection**: Recognizes video nodes (WanVaceToVideo, VHS_VideoCombine, AnimateDiff)
+- **Progress Tracking**: Real-time updates throughout the entire generation process
 
 ## 🚀 Installation & Setup
 
