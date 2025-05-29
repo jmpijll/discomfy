@@ -1871,7 +1871,7 @@ class IndividualImageView(discord.ui.View):
         self.add_item(animate_button)
     
     async def upscale_button_callback(self, interaction: discord.Interaction):
-        """Upscale this individual image."""
+        """Show upscale parameter selection modal."""
         try:
             # Check rate limiting
             if not self.bot._check_rate_limit(interaction.user.id):
@@ -1881,10 +1881,52 @@ class IndividualImageView(discord.ui.View):
                 )
                 return
             
+            # Show upscale parameter modal
+            modal = UpscaleParameterModal(self)
+            await interaction.response.send_modal(modal)
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error showing upscale modal: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error opening upscale settings. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+    
+    async def animate_button_callback(self, interaction: discord.Interaction):
+        """Show animation parameter selection modal."""
+        try:
+            # Check rate limiting
+            if not self.bot._check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "❌ **Rate Limited!** Please wait before making another request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Show animation parameter modal
+            modal = AnimationParameterModal(self)
+            await interaction.response.send_modal(modal)
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error showing animation modal: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error opening animation settings. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+
+    async def _perform_upscale(self, interaction: discord.Interaction, upscale_factor: int, denoise: float, steps: int):
+        """Perform the actual upscaling with user-selected parameters."""
+        try:
             # Show public status that someone is upscaling
             await interaction.response.send_message(
                 f"🔍 **{interaction.user.display_name}** is upscaling image #{self.image_index + 1}...\n"
-                f"*Please wait, this may take a moment.*",
+                f"*Factor: {upscale_factor}x | Denoise: {denoise} | Steps: {steps}*",
                 ephemeral=False  # Public message
             )
             
@@ -1896,8 +1938,8 @@ class IndividualImageView(discord.ui.View):
             progress_callback = await self.bot._create_unified_progress_callback(
                 interaction,
                 "Image Upscaling",
-                original_prompt,  # Use the actual original prompt instead of generic text
-                f"Factor: 2x | Method: AI Super-Resolution | Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
+                original_prompt,
+                f"Factor: {upscale_factor}x | Method: AI Super-Resolution | Original: {self.generation_info.get('width', 'Unknown')}x{self.generation_info.get('height', 'Unknown')}"
             )
             
             # Perform upscaling
@@ -1906,9 +1948,9 @@ class IndividualImageView(discord.ui.View):
                     input_image_data=self.image_data,
                     prompt=original_prompt,
                     negative_prompt=original_negative,
-                    upscale_factor=2.0,
-                    denoise=0.35,
-                    steps=20,
+                    upscale_factor=float(upscale_factor),
+                    denoise=denoise,
+                    steps=steps,
                     cfg=7.0,
                     progress_callback=progress_callback
                 )
@@ -1923,19 +1965,19 @@ class IndividualImageView(discord.ui.View):
                 self.bot.logger.warning(f"Failed to send final upscale progress: {progress_error}")
             
             # Save upscaled image
-            filename = get_unique_filename(f"upscaled_{interaction.user.id}")
+            filename = get_unique_filename(f"upscaled_{upscale_factor}x_{interaction.user.id}")
             save_output_image(upscaled_data, filename)
             
             # Create success embed
             success_embed = discord.Embed(
                 title="✅ Image Upscaled Successfully!",
-                description=f"**Original Image #{self.image_index + 1}** has been upscaled 2x",
+                description=f"**Original Image #{self.image_index + 1}** has been upscaled {upscale_factor}x",
                 color=discord.Color.green()
             )
             
             success_embed.add_field(
                 name="Upscale Details",
-                value=f"**Factor:** 2x\n**Method:** AI Super-Resolution\n**Denoise:** 0.35",
+                value=f"**Factor:** {upscale_factor}x\n**Method:** AI Super-Resolution\n**Denoise:** {denoise}\n**Steps:** {steps}",
                 inline=True
             )
             
@@ -1976,22 +2018,14 @@ class IndividualImageView(discord.ui.View):
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
             except:
                 pass
-    
-    async def animate_button_callback(self, interaction: discord.Interaction):
-        """Animate this individual image."""
+
+    async def _perform_animation(self, interaction: discord.Interaction, frames: int, strength: float, steps: int):
+        """Perform the actual animation with user-selected parameters."""
         try:
-            # Check rate limiting
-            if not self.bot._check_rate_limit(interaction.user.id):
-                await interaction.response.send_message(
-                    "❌ **Rate Limited!** Please wait before making another request.",
-                    ephemeral=True
-                )
-                return
-            
             # Show public status that someone is animating
             await interaction.response.send_message(
                 f"🎬 **{interaction.user.display_name}** is animating image #{self.image_index + 1}...\n"
-                f"*This will take 2-3 minutes to render 81 frames.*",
+                f"*Frames: {frames} | Strength: {strength} | Steps: {steps} | This will take 2-5 minutes.*",
                 ephemeral=False  # Public message
             )
             
@@ -2002,8 +2036,8 @@ class IndividualImageView(discord.ui.View):
             progress_callback = await self.bot._create_unified_progress_callback(
                 interaction,
                 "Video Generation",
-                original_prompt,  # Use the actual original prompt instead of generic text
-                f"Resolution: 720x720 | Length: 81 frames | Steps: 6 | CFG: 1.0 | Strength: 0.7"
+                original_prompt,
+                f"Resolution: 720x720 | Frames: {frames} | Steps: {steps} | CFG: 1.0 | Strength: {strength}"
             )
             
             # Perform video generation
@@ -2014,12 +2048,12 @@ class IndividualImageView(discord.ui.View):
                     workflow_name=None,  # Use default video workflow
                     width=720,
                     height=720,
-                    steps=6,
+                    steps=steps,
                     cfg=1.0,
-                    length=81,
-                    strength=0.7,
+                    length=frames,
+                    strength=strength,
                     seed=None,
-                    input_image_data=self.image_data,  # Fix: use self.image_data instead of self.original_image_data
+                    input_image_data=self.image_data,
                     progress_callback=progress_callback
                 )
             
@@ -2033,7 +2067,7 @@ class IndividualImageView(discord.ui.View):
                 self.bot.logger.warning(f"Failed to send final video progress: {progress_error}")
             
             # Save video
-            filename = get_unique_video_filename(f"animated_{interaction.user.id}")
+            filename = get_unique_video_filename(f"animated_{frames}f_{interaction.user.id}")
             save_output_video(video_data, filename)
             
             # Create success embed
@@ -2045,7 +2079,7 @@ class IndividualImageView(discord.ui.View):
             
             success_embed.add_field(
                 name="Video Details",
-                value=f"**Format:** MP4\n**Frames:** 81\n**Resolution:** 720x720",
+                value=f"**Format:** MP4\n**Frames:** {frames}\n**Resolution:** 720x720\n**Strength:** {strength}\n**Steps:** {steps}",
                 inline=True
             )
             
@@ -2075,6 +2109,183 @@ class IndividualImageView(discord.ui.View):
                     color=discord.Color.red()
                 )
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
+
+class UpscaleParameterModal(discord.ui.Modal):
+    """Modal for selecting upscale parameters."""
+    
+    def __init__(self, image_view):
+        super().__init__(title="🔍 Upscale Settings")
+        self.image_view = image_view
+        
+        # Add upscale factor dropdown (we'll handle this in the view)
+        self.upscale_factor = discord.ui.TextInput(
+            label="Upscale Factor",
+            placeholder="Enter: 2, 4, or 8 (default: 2)",
+            default="2",
+            max_length=1,
+            required=True
+        )
+        self.add_item(self.upscale_factor)
+        
+        # Add denoise strength
+        self.denoise = discord.ui.TextInput(
+            label="Denoise Strength",
+            placeholder="0.1 - 1.0 (default: 0.35)",
+            default="0.35",
+            max_length=4,
+            required=False
+        )
+        self.add_item(self.denoise)
+        
+        # Add steps
+        self.steps = discord.ui.TextInput(
+            label="Steps",
+            placeholder="10-50 (default: 20)",
+            default="20",
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.steps)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Parse upscale factor
+            try:
+                upscale_factor = int(self.upscale_factor.value)
+                if upscale_factor not in [2, 4, 8]:
+                    raise ValueError("Upscale factor must be 2, 4, or 8")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid upscale factor! Must be 2, 4, or 8.",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse denoise strength
+            try:
+                denoise = float(self.denoise.value) if self.denoise.value else 0.35
+                if not (0.1 <= denoise <= 1.0):
+                    raise ValueError("Denoise must be between 0.1 and 1.0")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid denoise strength! Must be between 0.1 and 1.0.",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse steps
+            try:
+                steps = int(self.steps.value) if self.steps.value else 20
+                if not (10 <= steps <= 50):
+                    raise ValueError("Steps must be between 10 and 50")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid steps! Must be between 10 and 50.",
+                    ephemeral=True
+                )
+                return
+            
+            # Start upscaling with selected parameters
+            await self.image_view._perform_upscale(interaction, upscale_factor, denoise, steps)
+            
+        except Exception as e:
+            self.image_view.bot.logger.error(f"Error in upscale modal submit: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error processing upscale settings. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+
+
+class AnimationParameterModal(discord.ui.Modal):
+    """Modal for selecting animation parameters."""
+    
+    def __init__(self, image_view):
+        super().__init__(title="🎬 Animation Settings")
+        self.image_view = image_view
+        
+        # Add frame count dropdown
+        self.frames = discord.ui.TextInput(
+            label="Frame Count",
+            placeholder="Enter: 81, 121, or 161 (default: 81)",
+            default="81",
+            max_length=3,
+            required=True
+        )
+        self.add_item(self.frames)
+        
+        # Add strength
+        self.strength = discord.ui.TextInput(
+            label="Animation Strength",
+            placeholder="0.1 - 1.0 (default: 0.7)",
+            default="0.7",
+            max_length=4,
+            required=False
+        )
+        self.add_item(self.strength)
+        
+        # Add steps
+        self.steps = discord.ui.TextInput(
+            label="Steps",
+            placeholder="4-12 (default: 6)",
+            default="6",
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.steps)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            # Parse frame count
+            try:
+                frames = int(self.frames.value)
+                if frames not in [81, 121, 161]:
+                    raise ValueError("Frame count must be 81, 121, or 161")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid frame count! Must be 81, 121, or 161.",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse strength
+            try:
+                strength = float(self.strength.value) if self.strength.value else 0.7
+                if not (0.1 <= strength <= 1.0):
+                    raise ValueError("Strength must be between 0.1 and 1.0")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid strength! Must be between 0.1 and 1.0.",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse steps
+            try:
+                steps = int(self.steps.value) if self.steps.value else 6
+                if not (4 <= steps <= 12):
+                    raise ValueError("Steps must be between 4 and 12")
+            except (ValueError, TypeError):
+                await interaction.response.send_message(
+                    "❌ Invalid steps! Must be between 4 and 12.",
+                    ephemeral=True
+                )
+                return
+            
+            # Start animation with selected parameters
+            await self.image_view._perform_animation(interaction, frames, strength, steps)
+            
+        except Exception as e:
+            self.image_view.bot.logger.error(f"Error in animation modal submit: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error processing animation settings. Please try again.",
+                    ephemeral=True
+                )
             except:
                 pass
 

@@ -679,13 +679,18 @@ class ImageGenerator:
         try:
             # Dynamic timeout based on expected generation type
             base_timeout = self.config.comfyui.timeout
-            # For video workflows, use longer timeout (10 minutes)
+            # For video workflows, use longer timeout (15 minutes for long video generation)
             workflow_json = json.dumps(progress._workflow_data)
-            if "VideoLinearCFGGuidance" in workflow_json or "I2VGenXLPipeline" in workflow_json:
-                max_wait_time = 600  # 10 minutes for video
-                self.logger.info(f"Using extended timeout for video generation: {max_wait_time}s")
+            if ("VideoLinearCFGGuidance" in workflow_json or 
+                "I2VGenXLPipeline" in workflow_json or 
+                "WanVaceToVideo" in workflow_json or
+                "VHS_VideoCombine" in workflow_json or
+                "AnimateDiff" in workflow_json):
+                max_wait_time = 900  # 15 minutes for video generation
+                self.logger.info(f"🎬 Video workflow detected - using extended timeout: {max_wait_time}s (15 minutes)")
             else:
                 max_wait_time = base_timeout  # Default for images
+                self.logger.info(f"🖼️ Image workflow detected - using standard timeout: {max_wait_time}s")
             
             # Always use 1-second polling for accurate progress tracking
             check_interval = 1.0
