@@ -18,6 +18,7 @@ from discord import app_commands
 from config import get_config, BotConfig, validate_discord_token, validate_comfyui_url
 from image_gen import ImageGenerator, ComfyUIAPIError, save_output_image, cleanup_old_outputs, get_unique_filename, ProgressInfo
 from video_gen import VideoGenerator, save_output_video, get_unique_video_filename
+from video_ui import VideoParameterSettingsButton, GenerateVideoButton
 
 class ComfyUIBot(commands.Bot):
     """Main Discord bot class for ComfyUI integration."""
@@ -269,16 +270,17 @@ class ComfyUIBot(commands.Bot):
         
         return progress_callback
 
-# Simplified slash command for image generation - ONLY prompt required
-@app_commands.command(name="generate", description="Generate images using ComfyUI with interactive setup")
+@app_commands.command(name="generate", description="Generate images or videos using ComfyUI with interactive setup")
 @app_commands.describe(
-    prompt="What you want to generate"
+    prompt="What you want to generate",
+    image="Upload an image for video generation (optional - if provided, generates video instead of image)"
 )
 async def generate_command(
     interaction: discord.Interaction,
-    prompt: str
+    prompt: str,
+    image: Optional[discord.Attachment] = None
 ):
-    """Generate images using ComfyUI with complete interactive setup."""
+    """Generate images or videos using ComfyUI with complete interactive setup."""
     bot: ComfyUIBot = interaction.client
     
     try:
@@ -308,6 +310,40 @@ async def generate_command(
             )
             return
         
+        # Validate image if provided (for video generation)
+        video_mode = image is not None
+        image_data = None
+        
+        if video_mode:
+            # Validate image attachment
+            if not image.content_type or not image.content_type.startswith('image/'):
+                await bot._send_error_embed(
+                    interaction,
+                    "Invalid Image",
+                    "Please upload a valid image file (PNG, JPG, JPEG, WEBP)."
+                )
+                return
+            
+            if image.size > 25 * 1024 * 1024:  # 25MB limit
+                await bot._send_error_embed(
+                    interaction,
+                    "Image Too Large",
+                    "Image must be smaller than 25MB."
+                )
+                return
+            
+            # Download image data
+            try:
+                image_data = await image.read()
+            except Exception as e:
+                bot.logger.error(f"Failed to download image: {e}")
+                await bot._send_error_embed(
+                    interaction,
+                    "Download Failed",
+                    "Failed to download the uploaded image. Please try again."
+                )
+                return
+        
         # Respond immediately to avoid timeout
         try:
             await interaction.response.defer()
@@ -323,26 +359,53 @@ async def generate_command(
                 return
         
         # Create setup embed
-        setup_embed = discord.Embed(
-            title="🎨 Image Generation Setup",
-            description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n" +
-                       f"Configure your generation settings below:",
-            color=discord.Color.blue()
-        )
-        
-        setup_embed.add_field(
-            name="🎯 Next Steps",
-            value="1️⃣ **Select Model** (Flux or HiDream)\n" +
-                  "2️⃣ **Choose LoRA** (optional)\n" +
-                  "3️⃣ **Adjust Settings** (optional)\n" +
-                  "4️⃣ **Generate Image**",
-            inline=False
-        )
+        if video_mode:
+            setup_embed = discord.Embed(
+                title="🎬 Video Generation Setup - WAN2.1VACE",
+                description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n" +
+                           f"**Image:** {image.filename}\n\n" +
+                           f"Configure your video generation settings below:",
+                color=discord.Color.purple()
+            )
+            
+            setup_embed.add_field(
+                name="🎯 Video Settings",
+                value="1️⃣ **Frame Count** (81/121/161 frames)\n" +
+                      "2️⃣ **Animation Strength** (0.1 - 1.0)\n" +
+                      "3️⃣ **Sampling Steps** (4-50 steps)\n" +
+                      "4️⃣ **Generate Video**",
+                inline=False
+            )
+            
+            setup_embed.add_field(
+                name="⚙️ Current Settings",
+                value="📹 **Frame Count:** 121 (default)\n" +
+                      "💪 **Strength:** 0.7 (default)\n" +
+                      "🔧 **Steps:** 4 (default)\n" +
+                      "⏱️ **Timeout:** 15 minutes",
+                inline=False
+            )
+        else:
+            setup_embed = discord.Embed(
+                title="🎨 Image Generation Setup",
+                description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n" +
+                           f"Configure your generation settings below:",
+                color=discord.Color.blue()
+            )
+            
+            setup_embed.add_field(
+                name="🎯 Next Steps",
+                value="1️⃣ **Select Model** (Flux or HiDream)\n" +
+                      "2️⃣ **Choose LoRA** (optional)\n" +
+                      "3️⃣ **Adjust Settings** (optional)\n" +
+                      "4️⃣ **Generate Image**",
+                inline=False
+            )
         
         setup_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
         
         # Create interactive view with all configuration options
-        view = CompleteSetupView(bot, prompt, interaction.user.id)
+        view = CompleteSetupView(bot, prompt, interaction.user.id, video_mode, image_data)
         
         # Send the setup message
         await interaction.followup.send(embed=setup_embed, view=view)
@@ -370,36 +433,46 @@ async def generate_command(
 class CompleteSetupView(discord.ui.View):
     """Complete interactive setup view for all generation parameters."""
     
-    def __init__(self, bot: ComfyUIBot, prompt: str, user_id: int):
+    def __init__(self, bot: ComfyUIBot, prompt: str, user_id: int, video_mode: bool = False, image_data: Optional[bytes] = None):
         super().__init__(timeout=300)  # 5-minute timeout for setup
         self.bot = bot
         self.prompt = prompt
         self.user_id = user_id
-        self.model = None
-        self.selected_lora = None
-        self.lora_strength = 1.0
-        self.negative_prompt = ""
-        self.loras = []  # Initialize empty LoRA list
+        self.video_mode = video_mode
+        self.image_data = image_data
         
-        # Default parameters based on model (will be set when model is selected)
-        self.width = 1024
-        self.height = 1024
-        self.steps = 30
-        self.cfg = 5.0
-        self.batch_size = 1
-        self.seed = None
+        if video_mode:
+            # Video generation parameters
+            self.frames = 121  # Default frame count
+            self.strength = 0.7  # Default animation strength
+            self.steps = 4  # Default sampling steps for video
+            
+            # Add video-specific controls
+            self.add_item(VideoParameterSettingsButton())
+            self.add_item(GenerateVideoButton())
+        else:
+            # Image generation parameters
+            self.model = None
+            self.selected_lora = None
+            self.lora_strength = 1.0
+            self.negative_prompt = ""
+            self.loras = []  # Initialize empty LoRA list
+            
+            # Default parameters based on model (will be set when model is selected)
+            self.width = 1024
+            self.height = 1024
+            self.steps = 30
+            self.cfg = 5.0
+            self.batch_size = 1
+            self.seed = None
+            
+            # Add image generation controls
+            self.add_item(ModelSelectMenu(self.model))
+            self.add_item(ParameterSettingsButton())
+            self.add_item(GenerateNowButton())
         
         # Track setup message for cleanup
         self.setup_message = None
-        
-        # Add model selection menu
-        self.add_item(ModelSelectMenu(self.model))
-        
-        # Add parameter settings button
-        self.add_item(ParameterSettingsButton())
-        
-        # Add generate button
-        self.add_item(GenerateNowButton())
     
     async def on_timeout(self):
         """Called when the view times out."""
