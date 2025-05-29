@@ -90,14 +90,23 @@ class VideoGenerator(ImageGenerator):
         """Download generated video from ComfyUI."""
         try:
             outputs = history.get('outputs', {})
+            self.logger.info(f"📥 Checking outputs from {len(outputs)} nodes for video files")
+            
+            # Log all outputs for debugging
+            for node_id, node_output in outputs.items():
+                output_keys = list(node_output.keys())
+                self.logger.info(f"📋 Node {node_id} outputs: {output_keys}")
             
             for node_id, node_output in outputs.items():
+                # Check for video files in 'gifs' key (VHS_VideoCombine output)
                 if 'gifs' in node_output:
-                    # Handle video output from VHS_VideoCombine
+                    self.logger.info(f"🎬 Found video output in node {node_id}")
                     for video_info in node_output['gifs']:
                         filename = video_info['filename']
                         subfolder = video_info.get('subfolder', '')
                         video_type = video_info.get('type', 'output')
+                        
+                        self.logger.info(f"📹 Attempting to download video: {filename} (subfolder: '{subfolder}', type: {video_type})")
                         
                         # Download video
                         params = {
@@ -106,14 +115,48 @@ class VideoGenerator(ImageGenerator):
                             'type': video_type
                         }
                         
-                        async with self.session.get(f"{self.base_url}/view", params=params) as response:
-                            if response.status == 200:
-                                video_data = await response.read()
-                                self.logger.info(f"Downloaded video: {filename} ({len(video_data)} bytes)")
-                                return video_data, filename
-                            else:
-                                self.logger.error(f"Failed to download video {filename}: {response.status}")
+                        try:
+                            async with self.session.get(f"{self.base_url}/view", params=params) as response:
+                                if response.status == 200:
+                                    video_data = await response.read()
+                                    self.logger.info(f"✅ Downloaded video: {filename} ({len(video_data)} bytes)")
+                                    return video_data, filename
+                                else:
+                                    response_text = await response.text()
+                                    self.logger.error(f"❌ Failed to download video {filename}: {response.status} - {response_text}")
+                        except Exception as download_error:
+                            self.logger.error(f"❌ Exception downloading video {filename}: {download_error}")
+                
+                # Also check for other potential video keys
+                if 'videos' in node_output:
+                    self.logger.info(f"🎬 Found video output in 'videos' key of node {node_id}")
+                    for video_info in node_output['videos']:
+                        filename = video_info['filename']
+                        subfolder = video_info.get('subfolder', '')
+                        video_type = video_info.get('type', 'output')
+                        
+                        self.logger.info(f"📹 Attempting to download video: {filename} (subfolder: '{subfolder}', type: {video_type})")
+                        
+                        params = {
+                            'filename': filename,
+                            'subfolder': subfolder,
+                            'type': video_type
+                        }
+                        
+                        try:
+                            async with self.session.get(f"{self.base_url}/view", params=params) as response:
+                                if response.status == 200:
+                                    video_data = await response.read()
+                                    self.logger.info(f"✅ Downloaded video: {filename} ({len(video_data)} bytes)")
+                                    return video_data, filename
+                                else:
+                                    response_text = await response.text()
+                                    self.logger.error(f"❌ Failed to download video {filename}: {response.status} - {response_text}")
+                        except Exception as download_error:
+                            self.logger.error(f"❌ Exception downloading video {filename}: {download_error}")
             
+            # Log the full outputs structure for debugging
+            self.logger.error(f"❌ No video found in any output. Full outputs structure: {outputs}")
             raise ComfyUIAPIError("No video found in generation output")
             
         except Exception as e:
