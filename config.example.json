@@ -48,6 +48,15 @@
       "enabled": true,
       "supports_lora": false
     },
+    "flux_kontext_edit": {
+      "name": "Flux Kontext Edit",
+      "description": "Edit images using natural language prompts with Flux Kontext model",
+      "file": "flux_kontext_edit.json",
+      "type": "edit",
+      "model_type": "flux",
+      "enabled": true,
+      "supports_lora": false
+    },
     "video_wan_vace_14B_i2v": {
       "name": "Image to Video",
       "description": "Convert images to MP4 videos using WAN VACE model",

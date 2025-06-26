@@ -280,154 +280,266 @@ async def generate_command(
     prompt: str,
     image: Optional[discord.Attachment] = None
 ):
-    """Generate images or videos using ComfyUI with complete interactive setup."""
-    bot: ComfyUIBot = interaction.client
-    
+    """Generate images or videos with interactive parameter selection."""
     try:
-        # Check rate limiting
+        # Check rate limiting first
         if not bot._check_rate_limit(interaction.user.id):
-            await bot._send_error_embed(
-                interaction,
-                "Rate Limited",
-                "You're sending requests too quickly. Please wait a moment before trying again."
-            )
+            await interaction.response.send_message("❌ You're making requests too quickly. Please wait a moment.", ephemeral=True)
             return
         
-        # Validate prompt
-        if not prompt.strip():
-            await bot._send_error_embed(
-                interaction,
-                "Invalid Input",
-                "Prompt cannot be empty."
-            )
-            return
-        
+        # Validate prompt length
         if len(prompt) > bot.config.security.max_prompt_length:
-            await bot._send_error_embed(
-                interaction,
-                "Prompt Too Long",
-                f"Prompt must be {bot.config.security.max_prompt_length} characters or less."
-            )
+            await interaction.response.send_message(f"❌ Prompt too long! Maximum {bot.config.security.max_prompt_length} characters.", ephemeral=True)
             return
         
-        # Validate image if provided (for video generation)
-        video_mode = image is not None
-        image_data = None
-        
-        if video_mode:
-            # Validate image attachment
+        # Determine if this is video generation (image provided) or image generation
+        if image:
+            # Video generation mode
             if not image.content_type or not image.content_type.startswith('image/'):
-                await bot._send_error_embed(
-                    interaction,
-                    "Invalid Image",
-                    "Please upload a valid image file (PNG, JPG, JPEG, WEBP)."
-                )
+                await interaction.response.send_message("❌ Please upload a valid image file.", ephemeral=True)
                 return
             
-            if image.size > 25 * 1024 * 1024:  # 25MB limit
-                await bot._send_error_embed(
-                    interaction,
-                    "Image Too Large",
-                    "Image must be smaller than 25MB."
-                )
+            if image.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
+                await interaction.response.send_message(f"❌ Image too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
                 return
             
             # Download image data
-            try:
-                image_data = await image.read()
-            except Exception as e:
-                bot.logger.error(f"Failed to download image: {e}")
-                await bot._send_error_embed(
-                    interaction,
-                    "Download Failed",
-                    "Failed to download the uploaded image. Please try again."
-                )
-                return
-        
-        # Respond immediately to avoid timeout
-        try:
-            await interaction.response.defer()
-        except discord.NotFound:
-            # Interaction already expired
-            bot.logger.warning(f"Discord interaction expired before defer for user {interaction.user.id}")
-            return
-        except discord.HTTPException as e:
-            if e.code == 40060:  # Interaction already acknowledged
-                pass  # This is fine, continue
-            else:
-                bot.logger.error(f"Failed to defer interaction: {e}")
-                return
-        
-        # Create setup embed
-        if video_mode:
+            image_data = await image.read()
+            
+            # Create video setup view
+            setup_view = CompleteSetupView(bot, prompt, interaction.user.id, video_mode=True, image_data=image_data)
+            
+            # Create setup embed for video
             setup_embed = discord.Embed(
-                title="🎬 Video Generation Setup - WAN2.1VACE",
-                description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n" +
-                           f"**Image:** {image.filename}\n\n" +
-                           f"Configure your video generation settings below:",
+                title="🎬 Video Generation Setup",
+                description=f"**Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
                 color=discord.Color.purple()
             )
             
             setup_embed.add_field(
-                name="🎯 Video Settings",
-                value="1️⃣ **Frame Count** (81/121/161 frames)\n" +
-                      "2️⃣ **Animation Strength** (0.1 - 1.0)\n" +
-                      "3️⃣ **Sampling Steps** (4-50 steps)\n" +
-                      "4️⃣ **Generate Video**",
-                inline=False
+                name="Input Image",
+                value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+                inline=True
             )
             
             setup_embed.add_field(
-                name="⚙️ Current Settings",
-                value="📹 **Frame Count:** 121 (default)\n" +
-                      "💪 **Strength:** 0.7 (default)\n" +
-                      "🔧 **Steps:** 4 (default)\n" +
-                      "⏱️ **Timeout:** 15 minutes",
+                name="Default Settings",
+                value=f"**Frames:** 81 (2.5s video)\n**Steps:** 6\n**Strength:** 0.7",
+                inline=True
+            )
+            
+            setup_embed.add_field(
+                name="Next Steps",
+                value="📹 Configure video settings below\n🎬 Generate your video\n⏱️ Estimated time: 5-15 minutes",
                 inline=False
             )
+            
+            await interaction.response.send_message(embed=setup_embed, view=setup_view)
+            
         else:
+            # Image generation mode - show model selection
+            setup_view = CompleteSetupView(bot, prompt, interaction.user.id)
+            
+            # Create setup embed
             setup_embed = discord.Embed(
                 title="🎨 Image Generation Setup",
-                description=f"**Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n\n" +
-                           f"Configure your generation settings below:",
+                description=f"**Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
                 color=discord.Color.blue()
             )
             
             setup_embed.add_field(
-                name="🎯 Next Steps",
-                value="1️⃣ **Select Model** (Flux or HiDream)\n" +
-                      "2️⃣ **Choose LoRA** (optional)\n" +
-                      "3️⃣ **Adjust Settings** (optional)\n" +
-                      "4️⃣ **Generate Image**",
-                inline=False
+                name="Default Settings",
+                value=f"**Model:** Flux (Fast)\n**Size:** 1024x1024\n**Steps:** 30\n**Batch:** 1",
+                inline=True
+            )
+            
+            setup_embed.add_field(
+                name="Next Steps",
+                value="🔧 Configure settings below\n🎨 Generate your images\n⏱️ Estimated time: 30-60 seconds",
+                inline=True
+            )
+            
+            await interaction.response.send_message(embed=setup_embed, view=setup_view)
+    
+    except Exception as e:
+        bot.logger.error(f"Error in generate command: {e}")
+        try:
+            await interaction.response.send_message("❌ An error occurred. Please try again.", ephemeral=True)
+        except:
+            pass
+
+@app_commands.command(name="edit", description="Edit an image using AI with natural language prompts")
+@app_commands.describe(
+    image="Upload the image you want to edit",
+    prompt="Describe what you want to change in the image",
+    steps="Number of sampling steps (10-50, default: 20)"
+)
+async def edit_command(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+    prompt: str,
+    steps: Optional[int] = 20
+):
+    """Edit an uploaded image using Flux Kontext with natural language prompts."""
+    try:
+        # Check rate limiting first
+        if not bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're making requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        # Validate image
+        if not image.content_type or not image.content_type.startswith('image/'):
+            await interaction.response.send_message("❌ Please upload a valid image file.", ephemeral=True)
+            return
+        
+        if image.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
+            await interaction.response.send_message(f"❌ Image too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
+            return
+        
+        # Validate prompt
+        if not prompt.strip():
+            await interaction.response.send_message("❌ Edit prompt cannot be empty!", ephemeral=True)
+            return
+        
+        if len(prompt) > bot.config.security.max_prompt_length:
+            await interaction.response.send_message(f"❌ Prompt too long! Maximum {bot.config.security.max_prompt_length} characters.", ephemeral=True)
+            return
+        
+        # Validate steps
+        if steps is not None and not (10 <= steps <= 50):
+            await interaction.response.send_message("❌ Steps must be between 10 and 50!", ephemeral=True)
+            return
+        
+        # Use default if steps not provided
+        if steps is None:
+            steps = 20
+        
+        # Download image data
+        image_data = await image.read()
+        
+        # Send initial response
+        initial_embed = discord.Embed(
+            title="✏️ Starting Image Edit - Flux Kontext",
+            description=f"**Edit Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
+            color=discord.Color.orange()
+        )
+        
+        initial_embed.add_field(
+            name="Input Image",
+            value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+            inline=True
+        )
+        
+        initial_embed.add_field(
+            name="Settings",
+            value=f"**Model:** Flux Kontext\n**Steps:** {steps}\n**CFG:** 2.5\n**Size:** 1024x1024",
+            inline=True
+        )
+        
+        initial_embed.add_field(
+            name="Processing",
+            value="🔄 Uploading image and starting edit...\n⏱️ Estimated time: 1-3 minutes",
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=initial_embed)
+        
+        # Create progress callback
+        progress_callback = await bot._create_unified_progress_callback(
+            interaction,
+            "Image Editing",
+            prompt,
+            f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5 | Size: 1024x1024"
+        )
+        
+        # Perform the edit
+        async with bot.image_generator as gen:
+            edited_data, edit_info = await gen.generate_edit(
+                input_image_data=image_data,
+                edit_prompt=prompt,
+                width=1024,
+                height=1024,
+                steps=steps,
+                cfg=2.5,
+                progress_callback=progress_callback
             )
         
-        setup_embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        # Send final completion status
+        try:
+            from image_gen import ProgressInfo
+            final_progress = ProgressInfo()
+            final_progress.mark_completed()
+            await progress_callback(final_progress)
+            bot.logger.info("✅ Successfully sent completion status to Discord for Image Editing")
+        except Exception as progress_error:
+            bot.logger.warning(f"Failed to send final edit progress: {progress_error}")
         
-        # Create interactive view with all configuration options
-        view = CompleteSetupView(bot, prompt, interaction.user.id, video_mode, image_data)
+        # Save edited image
+        from image_gen import save_output_image, get_unique_filename
+        filename = get_unique_filename(f"edited_{interaction.user.id}")
+        save_output_image(edited_data, filename)
         
-        # Send the setup message
-        await interaction.followup.send(embed=setup_embed, view=view)
+        # Create success embed
+        success_embed = discord.Embed(
+            title="✅ Image Edited Successfully!",
+            description=f"Your image has been edited using **Flux Kontext**",
+            color=discord.Color.green()
+        )
+        
+        success_embed.add_field(
+            name="Edit Details",
+            value=f"**Edit Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n**Steps:** {steps}\n**CFG:** 2.5",
+            inline=False
+        )
+        
+        success_embed.add_field(
+            name="Original Image",
+            value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+            inline=True
+        )
+        
+        success_embed.add_field(
+            name="Output",
+            value=f"**Size:** 1024x1024\n**Model:** Flux Kontext\n**Format:** PNG",
+            inline=True
+        )
+        
+        success_embed.set_footer(text=f"Edited by {interaction.user.display_name}")
+        
+        # Create view for the edited image (allows further editing, upscaling, etc.)
+        edited_view = IndividualImageView(
+            bot=bot,
+            image_data=edited_data,
+            generation_info=edit_info,
+            image_index=0  # Standalone edited image
+        )
+        
+        # Send the edited image
+        from io import BytesIO
+        file = discord.File(BytesIO(edited_data), filename=filename)
+        await interaction.followup.send(
+            embed=success_embed,
+            file=file,
+            view=edited_view
+        )
+        
+        bot.logger.info(f"Successfully processed /edit command for {interaction.user}")
         
     except Exception as e:
-        bot.logger.error(f"Unexpected error in generate command: {e}")
-        bot.logger.error(f"Traceback: {traceback.format_exc()}")
+        bot.logger.error(f"Error in edit command: {e}")
         try:
-            await bot._send_error_embed(
-                interaction,
-                "Unexpected Error",
-                "An unexpected error occurred. Please try again later."
+            error_embed = discord.Embed(
+                title="❌ Image Editing Failed",
+                description=f"Failed to edit image: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                color=discord.Color.red()
             )
+            
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=error_embed, ephemeral=True)
         except:
-            # Last resort - try to send any error message
-            try:
-                if interaction.response.is_done():
-                    await interaction.followup.send("❌ An unexpected error occurred. Please try again later.", ephemeral=True)
-                else:
-                    await interaction.response.send_message("❌ An unexpected error occurred. Please try again later.", ephemeral=True)
-            except:
-                bot.logger.error("Failed to send any error response to user")
+            pass
 
 # Complete interactive setup view with all parameters
 class CompleteSetupView(discord.ui.View):
@@ -1076,6 +1188,20 @@ class PostGenerationView(discord.ui.View):
             self.bot.logger.error(f"Upscaling error: {e}")
             await interaction.followup.send("❌ Upscaling failed. Please try again later.", ephemeral=True)
     
+    @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.secondary)
+    async def edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle edit button click."""
+        # Allow any user to use the buttons
+        
+        # Check rate limiting for the current user (not original user)
+        if not self.bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        # Show edit prompt modal
+        modal = PostGenerationEditModal(self, interaction.user)
+        await interaction.response.send_modal(modal)
+    
     @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
     async def animate_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle animate button click."""
@@ -1086,68 +1212,221 @@ class PostGenerationView(discord.ui.View):
             await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
             return
         
-        await interaction.response.send_message("🎬 Starting animation process...", ephemeral=True)
+        # Show animation parameter modal instead of direct generation
+        modal = PostGenerationAnimationModal(self, interaction.user)
+        await interaction.response.send_modal(modal)
+
+class PostGenerationAnimationModal(discord.ui.Modal):
+    """Modal for animating images from PostGenerationView."""
+    
+    def __init__(self, post_gen_view, user):
+        super().__init__(title="🎬 Animation Settings")
+        self.post_gen_view = post_gen_view
+        self.user = user
         
+        # Get original prompt for pre-filling
+        original_prompt = post_gen_view.generation_info.get('prompt', '')
+        
+        # Animation prompt input (pre-filled with original)
+        self.animation_prompt_input = discord.ui.TextInput(
+            label="Animation Prompt",
+            placeholder="Describe the animation or leave as original...",
+            default=original_prompt[:500],  # Limit to modal max length
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=True
+        )
+        self.add_item(self.animation_prompt_input)
+        
+        # Frame count input
+        self.frames_input = discord.ui.TextInput(
+            label="Frame Count (81/121/161)",
+            placeholder="Default: 81",
+            default="81",
+            max_length=3,
+            required=False
+        )
+        self.add_item(self.frames_input)
+        
+        # Animation strength input
+        self.strength_input = discord.ui.TextInput(
+            label="Animation Strength (0.1-1.0)",
+            placeholder="Default: 0.7",
+            default="0.7",
+            max_length=4,
+            required=False
+        )
+        self.add_item(self.strength_input)
+        
+        # Sampling steps input
+        self.steps_input = discord.ui.TextInput(
+            label="Sampling Steps (4-12)",
+            placeholder="Default: 6",
+            default="6",
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.steps_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle animation parameters and start animation process."""
         try:
-            # Progress callback for video generation
-            progress_callback = await self.bot._create_unified_progress_callback(
-                interaction,
-                "Video Generation",
-                self.generation_info.get('prompt', ''),
-                f"Resolution: 720x720 | Length: 81 frames | Strength: 0.7"
-            )
-            
-            # Generate video using ComfyUI
-            async with self.bot.video_generator as gen:
-                video_data, filename, video_info = await gen.generate_video(
-                    prompt=self.generation_info.get('prompt', ''),
-                    negative_prompt=self.generation_info.get('negative_prompt', ''),
-                    workflow_name=None,  # Use default video workflow
-                    width=720,
-                    height=720,
-                    steps=6,
-                    cfg=1.0,
-                    length=81,
-                    strength=0.7,
-                    seed=None,
-                    input_image_data=self.original_image_data,
-                    progress_callback=progress_callback
+            # Validate animation prompt
+            animation_prompt = self.animation_prompt_input.value.strip()
+            if not animation_prompt:
+                await interaction.response.send_message(
+                    "❌ Animation prompt cannot be empty!",
+                    ephemeral=True
                 )
+                return
             
-            # Create success embed
-            video_embed = discord.Embed(
-                title="✅ Video Generated Successfully!",
-                description=f"**Original Prompt:** {self.generation_info.get('prompt', 'Unknown')[:150]}{'...' if len(self.generation_info.get('prompt', '')) > 150 else ''}",
-                color=discord.Color.green()
+            # Parse and validate frame count
+            frames = 81  # Default
+            if self.frames_input.value.strip():
+                try:
+                    frames = int(self.frames_input.value.strip())
+                    if frames not in [81, 121, 161]:
+                        await interaction.response.send_message(
+                            "❌ Invalid frame count! Must be 81, 121, or 161",
+                            ephemeral=True
+                        )
+                        return
+                except ValueError:
+                    await interaction.response.send_message(
+                        "❌ Invalid frame count! Must be 81, 121, or 161",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Parse and validate strength
+            strength = 0.7  # Default
+            if self.strength_input.value.strip():
+                try:
+                    strength = float(self.strength_input.value.strip())
+                    if not (0.1 <= strength <= 1.0):
+                        await interaction.response.send_message(
+                            "❌ Invalid strength! Must be between 0.1 and 1.0",
+                            ephemeral=True
+                        )
+                        return
+                except ValueError:
+                    await interaction.response.send_message(
+                        "❌ Invalid strength! Must be a number between 0.1 and 1.0",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Parse and validate steps
+            steps = 6  # Default
+            if self.steps_input.value.strip():
+                try:
+                    steps = int(self.steps_input.value.strip())
+                    if not (4 <= steps <= 12):
+                        await interaction.response.send_message(
+                            "❌ Invalid steps! Must be between 4 and 12",
+                            ephemeral=True
+                        )
+                        return
+                except ValueError:
+                    await interaction.response.send_message(
+                        "❌ Invalid steps! Must be between 4 and 12",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Start animation process
+            prompt_preview = animation_prompt[:80] + "..." if len(animation_prompt) > 80 else animation_prompt
+            await interaction.response.send_message(
+                f"🎬 **{interaction.user.display_name}** is animating image...\n"
+                f"*Prompt: {prompt_preview} | Frames: {frames} | Strength: {strength} | Steps: {steps}*",
+                ephemeral=False
             )
             
-            video_embed.add_field(
-                name="Video Details",
-                value=f"**Resolution:** 720x720\n**Length:** 81 frames\n**Strength:** 0.7\n**Steps:** 6",
-                inline=True
-            )
+            try:
+                # Progress callback for video generation
+                progress_callback = await self.post_gen_view.bot._create_unified_progress_callback(
+                    interaction,
+                    "Video Generation",
+                    animation_prompt,
+                    f"Resolution: 720x720 | Frames: {frames} | Steps: {steps} | CFG: 1.0 | Strength: {strength}"
+                )
+                
+                # Generate video using ComfyUI with custom prompt
+                async with self.post_gen_view.bot.video_generator as gen:
+                    video_data, filename, video_info = await gen.generate_video(
+                        prompt=animation_prompt,
+                        negative_prompt=self.post_gen_view.generation_info.get('negative_prompt', ''),
+                        workflow_name=None,  # Use default video workflow
+                        width=720,
+                        height=720,
+                        steps=steps,
+                        cfg=1.0,
+                        length=frames,
+                        strength=strength,
+                        seed=None,
+                        input_image_data=self.post_gen_view.original_image_data,
+                        progress_callback=progress_callback
+                    )
+                
+                # Create success embed
+                video_embed = discord.Embed(
+                    title="✅ Video Generated Successfully!",
+                    description=f"Your image has been animated into a video",
+                    color=discord.Color.green()
+                )
+                
+                video_embed.add_field(
+                    name="Video Details",
+                    value=f"**Format:** MP4\n**Frames:** {frames}\n**Resolution:** 720x720\n**Strength:** {strength}\n**Steps:** {steps}",
+                    inline=True
+                )
+                
+                video_embed.add_field(
+                    name="Animation Prompt",
+                    value=f"{animation_prompt[:150]}{'...' if len(animation_prompt) > 150 else ''}",
+                    inline=False
+                )
+                
+                video_embed.add_field(
+                    name="Original Prompt",
+                    value=f"{self.post_gen_view.generation_info.get('prompt', '')[:100]}{'...' if len(self.post_gen_view.generation_info.get('prompt', '')) > 100 else ''}",
+                    inline=False
+                )
+                
+                video_embed.add_field(
+                    name="Requested by",
+                    value=interaction.user.display_name,
+                    inline=True
+                )
+                
+                # Send video file
+                video_filename = f"animated_{int(__import__('time').time())}.mp4"
+                file = discord.File(BytesIO(video_data), filename=video_filename)
+                
+                await interaction.followup.send(
+                    embed=video_embed,
+                    file=file,
+                    ephemeral=False  # Make it visible to everyone
+                )
+                
+                self.post_gen_view.bot.logger.info(f"Successfully animated image for {interaction.user}")
+                        
+            except Exception as e:
+                self.post_gen_view.bot.logger.error(f"Animation error: {e}")
+                await interaction.followup.send("❌ Animation failed. Please try again later.", ephemeral=True)
             
-            video_embed.add_field(
-                name="Requested by",
-                value=interaction.user.display_name,
-                inline=True
-            )
-            
-            # Send video file
-            video_filename = f"animated_{int(__import__('time').time())}.mp4"
-            file = discord.File(BytesIO(video_data), filename=video_filename)
-            
-            await interaction.followup.send(
-                embed=video_embed,
-                file=file,
-                ephemeral=False  # Make it visible to everyone
-            )
-            
-            self.bot.logger.info(f"Successfully generated video for {interaction.user}")
-                    
         except Exception as e:
-            self.bot.logger.error(f"Animation error: {e}")
-            await interaction.followup.send("❌ Animation failed. Please try again later.", ephemeral=True)
+            self.post_gen_view.bot.logger.error(f"Error in animation modal submit: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error processing animation request. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                await interaction.followup.send(
+                    "❌ Error processing animation request. Please try again.",
+                    ephemeral=True
+                )
 
 # Help command
 @app_commands.command(name="help", description="Show help information about the bot")
@@ -1160,20 +1439,12 @@ async def help_command(interaction: discord.Interaction):
     )
     
     embed.add_field(
-        name="📝 Basic Usage",
-        value="Use `/generate` with a prompt to start the interactive setup:\n"
-              "`/generate prompt:a beautiful sunset over mountains`\n"
-              "`/generate prompt:cyberpunk city model:flux`\n"
-              "`/generate prompt:anime character model:hidream`",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🔧 Available Commands",
-        value="• `/generate` - Start interactive image generation with model and LoRA selection\n"
-              "• `/loras` - List available LoRAs for each model\n"
+        name="📖 Available Commands",
+        value="• `/generate` - Generate AI images or videos\n"
+              "• `/edit` - Edit images using natural language prompts\n"
+              "• `/help` - Show this help message\n"
               "• `/status` - Check bot and ComfyUI status\n"
-              "• `/help` - Show this help message",
+              "• `/loras` - List available LoRA models",
         inline=False
     )
     
@@ -1213,8 +1484,10 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="🎬 Post-Generation Actions",
         value="After generating an image, use the action buttons:\n"
-              "• **🔍 Upscale** - Enhance image resolution (2x upscaling)\n"
-              "• **🎬 Animate** - Convert image to MP4 video (720x720, 81 frames)\n"
+              "• **🔍 Upscale** - Interactive upscaling (2x/4x/8x, custom denoise & steps)\n"
+              "• **✏️ Edit** - Edit the image using Flux Kontext with custom prompts\n"
+              "• **🎬 Animate** - Convert to MP4 video with **custom animation prompts**\n"
+              "  ⭐ *New: Animation prompts are pre-filled but fully customizable!*\n"
               "*(Anyone can use these buttons on any generation)*",
         inline=False
     )
@@ -1241,6 +1514,39 @@ async def help_command(interaction: discord.Interaction):
               "**Quick commands:**\n"
               "`/loras model:flux` - Browse Flux LoRAs\n"
               "`/status` - Check if everything is running",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎨 Image Generation",
+        value="Use `/generate` with a text prompt to create images:\n"
+              "• Choose between **Flux** (fast) or **HiDream** (detailed)\n"
+              "• Customize size, steps, CFG, batch size, and LoRA\n"
+              "• Generate multiple images at once\n"
+              "• Interactive parameter selection before generation",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="✏️ Image Editing",
+        value="Use `/edit` to modify existing images:\n"
+              "• Upload any image file (PNG, JPG, WebP)\n"
+              "• Describe your desired changes in natural language\n"
+              "• Powered by **Flux Kontext** for precise edits\n"
+              "• Example: `/edit image:photo.jpg prompt:add sunglasses`",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎬 Video Generation & Animation",
+        value="**Two ways to create videos:**\n"
+              "• **Direct**: `/generate` with uploaded image for video generation\n"
+              "• **Post-Generation**: Use 🎬 Animate button on any generated image\n\n"
+              "**New Animation Features:**\n"
+              "• **Custom Animation Prompts** - Modify how your image animates\n"
+              "• **Interactive Settings** - Choose frames (81/121/161), strength, steps\n"
+              "• **Pre-filled Prompts** - Original prompt auto-filled, edit as needed\n"
+              "• **Example**: Change 'mountain landscape' → 'mountain landscape with flowing clouds'",
         inline=False
     )
     
@@ -1932,6 +2238,13 @@ class IndividualImageView(discord.ui.View):
         )
         upscale_button.callback = self.upscale_button_callback
         
+        edit_button = discord.ui.Button(
+            label=f"✏️ Edit #{image_index + 1}",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"edit_{image_index}"
+        )
+        edit_button.callback = self.edit_button_callback
+        
         animate_button = discord.ui.Button(
             label=f"🎬 Animate #{image_index + 1}",
             style=discord.ButtonStyle.secondary,
@@ -1941,6 +2254,7 @@ class IndividualImageView(discord.ui.View):
         
         # Add the buttons to the view
         self.add_item(upscale_button)
+        self.add_item(edit_button)
         self.add_item(animate_button)
     
     async def upscale_button_callback(self, interaction: discord.Interaction):
@@ -1963,6 +2277,31 @@ class IndividualImageView(discord.ui.View):
             try:
                 await interaction.response.send_message(
                     "❌ Error opening upscale settings. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+    
+    async def edit_button_callback(self, interaction: discord.Interaction):
+        """Show edit parameter selection modal."""
+        try:
+            # Check rate limiting
+            if not self.bot._check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "❌ **Rate Limited!** Please wait before making another request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Show edit parameter modal
+            modal = EditParameterModal(self)
+            await interaction.response.send_modal(modal)
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error showing edit modal: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error opening edit settings. Please try again.",
                     ephemeral=True
                 )
             except:
@@ -2092,31 +2431,120 @@ class IndividualImageView(discord.ui.View):
             except:
                 pass
 
-    async def _perform_animation(self, interaction: discord.Interaction, frames: int, strength: float, steps: int):
-        """Perform the actual animation with user-selected parameters."""
+    async def _perform_edit(self, interaction: discord.Interaction, edit_prompt: str, steps: int):
+        """Perform the actual image editing with user-selected parameters."""
         try:
-            # Show public status that someone is animating
+            # Show public status that someone is editing
             await interaction.response.send_message(
-                f"🎬 **{interaction.user.display_name}** is animating image #{self.image_index + 1}...\n"
-                f"*Frames: {frames} | Strength: {strength} | Steps: {steps} | This will take 2-5 minutes.*",
+                f"✏️ **{interaction.user.display_name}** is editing image #{self.image_index + 1}...\n"
+                f"*Edit: {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''} | Steps: {steps}*",
                 ephemeral=False  # Public message
             )
             
-            # Extract original parameters
-            original_prompt = self.generation_info.get('prompt', '')
+            # Create progress callback for editing
+            progress_callback = await self.bot._create_unified_progress_callback(
+                interaction,
+                "Image Editing",
+                edit_prompt,
+                f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
+            )
+            
+            # Perform editing
+            async with self.bot.image_generator as gen:
+                edited_data, edit_info = await gen.generate_edit(
+                    input_image_data=self.image_data,
+                    edit_prompt=edit_prompt,
+                    width=1024,
+                    height=1024,
+                    steps=steps,
+                    cfg=2.5,
+                    progress_callback=progress_callback
+                )
+            
+            # Send final completion status
+            try:
+                from image_gen import ProgressInfo
+                final_progress = ProgressInfo()
+                final_progress.mark_completed()
+                await progress_callback(final_progress)
+                self.bot.logger.info("✅ Successfully sent completion status to Discord for Image Editing")
+            except Exception as progress_error:
+                self.bot.logger.warning(f"Failed to send final edit progress: {progress_error}")
+            
+            # Save edited image
+            from image_gen import save_output_image, get_unique_filename
+            filename = get_unique_filename(f"edited_{interaction.user.id}")
+            save_output_image(edited_data, filename)
+            
+            # Create success embed
+            success_embed = discord.Embed(
+                title="✅ Image Edited Successfully!",
+                description=f"**Image #{self.image_index + 1}** has been edited using Flux Kontext",
+                color=discord.Color.green()
+            )
+            
+            success_embed.add_field(
+                name="Edit Details",
+                value=f"**Method:** Flux Kontext\n**Edit Prompt:** {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''}\n**Steps:** {steps}",
+                inline=False
+            )
+            
+            success_embed.set_footer(text=f"Edited by {interaction.user.display_name}")
+            
+            # Create new view for the edited image
+            edited_view = IndividualImageView(
+                bot=self.bot,
+                image_data=edited_data,
+                generation_info=edit_info,
+                image_index=0  # Edited images are standalone
+            )
+            
+            # Send edited image
+            from io import BytesIO
+            file = discord.File(BytesIO(edited_data), filename=filename)
+            await interaction.followup.send(
+                embed=success_embed,
+                file=file,
+                view=edited_view
+            )
+            
+            self.bot.logger.info(f"Successfully generated edited image for {interaction.user}")
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error in editing: {e}")
+            try:
+                error_embed = discord.Embed(
+                    title="❌ Image Editing Failed",
+                    description=f"Failed to edit image: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
+
+    async def _perform_animation(self, interaction: discord.Interaction, animation_prompt: str, frames: int, strength: float, steps: int):
+        """Perform the actual animation with user-selected parameters and custom prompt."""
+        try:
+            # Show public status that someone is animating
+            prompt_preview = animation_prompt[:80] + "..." if len(animation_prompt) > 80 else animation_prompt
+            await interaction.response.send_message(
+                f"🎬 **{interaction.user.display_name}** is animating image #{self.image_index + 1}...\n"
+                f"*Prompt: {prompt_preview} | Frames: {frames} | Strength: {strength} | Steps: {steps} | This will take 2-5 minutes.*",
+                ephemeral=False  # Public message
+            )
             
             # Create progress callback for video generation
             progress_callback = await self.bot._create_unified_progress_callback(
                 interaction,
                 "Video Generation",
-                original_prompt,
+                animation_prompt,
                 f"Resolution: 720x720 | Frames: {frames} | Steps: {steps} | CFG: 1.0 | Strength: {strength}"
             )
             
-            # Perform video generation
+            # Perform video generation using the custom animation prompt
             async with self.bot.video_generator as gen:
                 video_data, filename, video_info = await gen.generate_video(
-                    prompt=original_prompt,
+                    prompt=animation_prompt,
                     negative_prompt=self.generation_info.get('negative_prompt', ''),
                     workflow_name=None,  # Use default video workflow
                     width=720,
@@ -2132,6 +2560,7 @@ class IndividualImageView(discord.ui.View):
             
             # Send final completion status
             try:
+                from image_gen import ProgressInfo
                 final_progress = ProgressInfo()
                 final_progress.mark_completed()
                 await progress_callback(final_progress)
@@ -2140,6 +2569,7 @@ class IndividualImageView(discord.ui.View):
                 self.bot.logger.warning(f"Failed to send final video progress: {progress_error}")
             
             # Save video
+            from video_gen import save_output_video, get_unique_video_filename
             filename = get_unique_video_filename(f"animated_{frames}f_{interaction.user.id}")
             save_output_video(video_data, filename)
             
@@ -2157,14 +2587,21 @@ class IndividualImageView(discord.ui.View):
             )
             
             success_embed.add_field(
-                name="Original Prompt",
-                value=f"{original_prompt[:100]}{'...' if len(original_prompt) > 100 else ''}",
+                name="Animation Prompt",
+                value=f"{animation_prompt[:150]}{'...' if len(animation_prompt) > 150 else ''}",
+                inline=False
+            )
+            
+            success_embed.add_field(
+                name="Original Prompt", 
+                value=f"{self.generation_info.get('prompt', '')[:100]}{'...' if len(self.generation_info.get('prompt', '')) > 100 else ''}",
                 inline=False
             )
             
             success_embed.set_footer(text=f"Animated by {interaction.user.display_name}")
             
             # Send video file
+            from io import BytesIO
             file = discord.File(BytesIO(video_data), filename=filename)
             await interaction.followup.send(
                 embed=success_embed,
@@ -2184,6 +2621,7 @@ class IndividualImageView(discord.ui.View):
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
             except:
                 pass
+
 
 class UpscaleParameterModal(discord.ui.Modal):
     """Modal for selecting upscale parameters."""
@@ -2281,6 +2719,20 @@ class AnimationParameterModal(discord.ui.Modal):
         super().__init__(title="🎬 Animation Settings")
         self.image_view = image_view
         
+        # Get original prompt for pre-filling
+        original_prompt = image_view.generation_info.get('prompt', '')
+        
+        # Add animation prompt input (pre-filled with original)
+        self.animation_prompt = discord.ui.TextInput(
+            label="Animation Prompt",
+            placeholder="Describe the animation or leave as original...",
+            default=original_prompt[:500],  # Limit to modal max length
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=True
+        )
+        self.add_item(self.animation_prompt)
+        
         # Add frame count dropdown
         self.frames = discord.ui.TextInput(
             label="Frame Count",
@@ -2313,6 +2765,15 @@ class AnimationParameterModal(discord.ui.Modal):
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
+            # Validate animation prompt
+            animation_prompt = self.animation_prompt.value.strip()
+            if not animation_prompt:
+                await interaction.response.send_message(
+                    "❌ Animation prompt cannot be empty!",
+                    ephemeral=True
+                )
+                return
+            
             # Parse frame count
             try:
                 frames = int(self.frames.value)
@@ -2349,8 +2810,8 @@ class AnimationParameterModal(discord.ui.Modal):
                 )
                 return
             
-            # Start animation with selected parameters
-            await self.image_view._perform_animation(interaction, frames, strength, steps)
+            # Start animation with selected parameters and custom prompt
+            await self.image_view._perform_animation(interaction, animation_prompt, frames, strength, steps)
             
         except Exception as e:
             self.image_view.bot.logger.error(f"Error in animation modal submit: {e}")
@@ -2361,6 +2822,224 @@ class AnimationParameterModal(discord.ui.Modal):
                 )
             except:
                 pass
+
+
+class EditParameterModal(discord.ui.Modal):
+    """Modal for configuring image edit parameters."""
+    
+    def __init__(self, image_view):
+        super().__init__(title="✏️ Configure Image Edit")
+        self.image_view = image_view
+        
+        # Edit prompt input (main field)
+        self.edit_prompt_input = discord.ui.TextInput(
+            label="Edit Prompt",
+            placeholder="Describe what you want to change in the image...",
+            style=discord.TextStyle.paragraph,
+            min_length=1,
+            max_length=500,
+            required=True
+        )
+        self.add_item(self.edit_prompt_input)
+        
+        # Sampling steps input
+        self.steps_input = discord.ui.TextInput(
+            label="Sampling Steps (10-50)",
+            placeholder="Default: 20",
+            default="20",
+            min_length=1,
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.steps_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle edit parameters and start editing process."""
+        try:
+            # Validate edit prompt
+            edit_prompt = self.edit_prompt_input.value.strip()
+            if not edit_prompt:
+                await interaction.response.send_message(
+                    "❌ Edit prompt cannot be empty!",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse and validate steps
+            steps = 20  # Default
+            if self.steps_input.value.strip():
+                try:
+                    steps = int(self.steps_input.value.strip())
+                    if not (10 <= steps <= 50):
+                        await interaction.response.send_message(
+                            "❌ Invalid steps! Must be between 10 and 50",
+                            ephemeral=True
+                        )
+                        return
+                except ValueError:
+                    await interaction.response.send_message(
+                        "❌ Invalid steps! Must be a number between 10 and 50",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Start the editing process
+            await self.image_view._perform_edit(interaction, edit_prompt, steps)
+            
+        except Exception as e:
+            self.image_view.bot.logger.error(f"Error in edit modal submit: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error processing edit request. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                await interaction.followup.send(
+                    "❌ Error processing edit request. Please try again.",
+                    ephemeral=True
+                )
+
+
+class PostGenerationEditModal(discord.ui.Modal):
+    """Modal for editing images from PostGenerationView."""
+    
+    def __init__(self, post_gen_view, user):
+        super().__init__(title="✏️ Edit Image")
+        self.post_gen_view = post_gen_view
+        self.user = user
+        
+        # Edit prompt input (main field)
+        self.edit_prompt_input = discord.ui.TextInput(
+            label="Edit Prompt",
+            placeholder="Describe what you want to change in the image...",
+            style=discord.TextStyle.paragraph,
+            min_length=1,
+            max_length=500,
+            required=True
+        )
+        self.add_item(self.edit_prompt_input)
+        
+        # Sampling steps input
+        self.steps_input = discord.ui.TextInput(
+            label="Sampling Steps (10-50)",
+            placeholder="Default: 20",
+            default="20",
+            min_length=1,
+            max_length=2,
+            required=False
+        )
+        self.add_item(self.steps_input)
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle edit parameters and start editing process."""
+        try:
+            # Validate edit prompt
+            edit_prompt = self.edit_prompt_input.value.strip()
+            if not edit_prompt:
+                await interaction.response.send_message(
+                    "❌ Edit prompt cannot be empty!",
+                    ephemeral=True
+                )
+                return
+            
+            # Parse and validate steps
+            steps = 20  # Default
+            if self.steps_input.value.strip():
+                try:
+                    steps = int(self.steps_input.value.strip())
+                    if not (10 <= steps <= 50):
+                        await interaction.response.send_message(
+                            "❌ Invalid steps! Must be between 10 and 50",
+                            ephemeral=True
+                        )
+                        return
+                except ValueError:
+                    await interaction.response.send_message(
+                        "❌ Invalid steps! Must be a number between 10 and 50",
+                        ephemeral=True
+                    )
+                    return
+            
+            # Start editing process
+            await interaction.response.send_message("✏️ Starting image editing process...", ephemeral=True)
+            
+            try:
+                # Progress callback for editing
+                progress_callback = await self.post_gen_view.bot._create_unified_progress_callback(
+                    interaction,
+                    "Image Editing",
+                    edit_prompt,
+                    f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
+                )
+                
+                # Generate edited image using ComfyUI
+                async with self.post_gen_view.bot.image_generator as gen:
+                    edited_data, edit_info = await gen.generate_edit(
+                        input_image_data=self.post_gen_view.original_image_data,
+                        edit_prompt=edit_prompt,
+                        width=1024,
+                        height=1024,
+                        steps=steps,
+                        cfg=2.5,
+                        progress_callback=progress_callback
+                    )
+                
+                # Create success embed
+                edit_embed = discord.Embed(
+                    title="✅ Image Edited Successfully!",
+                    description=f"**Original Prompt:** {self.post_gen_view.generation_info.get('prompt', 'Unknown')[:100]}{'...' if len(self.post_gen_view.generation_info.get('prompt', '')) > 100 else ''}",
+                    color=discord.Color.green()
+                )
+                
+                edit_embed.add_field(
+                    name="Edit Details",
+                    value=f"**Method:** Flux Kontext\n**Edit Prompt:** {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''}\n**Steps:** {steps}",
+                    inline=False
+                )
+                
+                edit_embed.add_field(
+                    name="Requested by",
+                    value=interaction.user.display_name,
+                    inline=True
+                )
+                
+                # Send edited image file
+                edited_filename = f"edited_{int(__import__('time').time())}.png"
+                file = discord.File(BytesIO(edited_data), filename=edited_filename)
+                
+                # Create new view for the edited image
+                edited_view = IndividualImageView(
+                    bot=self.post_gen_view.bot,
+                    image_data=edited_data,
+                    generation_info=edit_info,
+                    image_index=0  # Edited images are standalone
+                )
+                
+                await interaction.followup.send(
+                    embed=edit_embed,
+                    file=file,
+                    view=edited_view,
+                    ephemeral=False  # Make it visible to everyone
+                )
+                
+                self.post_gen_view.bot.logger.info(f"Successfully edited image for {interaction.user}")
+                        
+            except Exception as e:
+                self.post_gen_view.bot.logger.error(f"Edit error: {e}")
+                await interaction.followup.send("❌ Image editing failed. Please try again later.", ephemeral=True)
+            
+        except Exception as e:
+            self.post_gen_view.bot.logger.error(f"Error in edit modal submit: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error processing edit request. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                await interaction.followup.send(
+                    "❌ Error processing edit request. Please try again.",
+                    ephemeral=True
+                )
 
 async def main():
     """Main function to run the bot."""
@@ -2402,6 +3081,7 @@ async def main():
         
         # Add commands to the bot
         bot.tree.add_command(generate_command)
+        bot.tree.add_command(edit_command)
         bot.tree.add_command(help_command)
         bot.tree.add_command(status_command)
         bot.tree.add_command(loras_command)

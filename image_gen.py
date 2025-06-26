@@ -1324,6 +1324,155 @@ class ImageGenerator:
             self.logger.error(f"Failed to update upscale workflow parameters: {e}")
             raise ComfyUIAPIError(f"Failed to update upscale workflow parameters: {e}")
     
+    async def generate_edit(
+        self,
+        input_image_data: bytes,
+        edit_prompt: str,
+        width: int = 1024,
+        height: int = 1024,
+        steps: int = 20,
+        cfg: float = 2.5,
+        seed: Optional[int] = None,
+        progress_callback=None
+    ) -> Tuple[bytes, Dict[str, Any]]:
+        """
+        Edit an image using ComfyUI edit workflow with Flux Kontext.
+        
+        Args:
+            input_image_data: Image data as bytes
+            edit_prompt: Prompt describing the desired edit
+            width: Output image width (default: 1024)
+            height: Output image height (default: 1024)
+            steps: Number of sampling steps (default: 20)
+            cfg: CFG scale (default: 2.5)
+            seed: Random seed (auto-generated if None)
+            progress_callback: Optional callback for progress updates
+        
+        Returns:
+            Tuple of (edited_image_data, edit_info)
+        """
+        try:
+            # Validate inputs
+            if not input_image_data:
+                raise ValueError("Input image data cannot be empty")
+            
+            if not edit_prompt.strip():
+                raise ValueError("Edit prompt cannot be empty")
+            
+            if len(edit_prompt) > self.config.security.max_prompt_length:
+                raise ValueError(f"Edit prompt too long (max {self.config.security.max_prompt_length} characters)")
+            
+            # Upload image to ComfyUI
+            upload_filename = f"edit_input_{int(time.time())}.png"
+            uploaded_filename = await self.upload_image(input_image_data, upload_filename)
+            
+            # Use edit workflow
+            workflow_name = "flux_kontext_edit"
+            
+            self.logger.info(f"Starting image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
+            
+            # Load and update workflow
+            workflow = self._load_workflow(workflow_name)
+            updated_workflow = self._update_edit_workflow_parameters(
+                workflow, uploaded_filename, edit_prompt, width, height, steps, cfg, seed
+            )
+            
+            # Queue prompt
+            prompt_id, client_id = await self._queue_prompt(updated_workflow)
+            
+            # Wait for completion
+            history = await self._wait_for_completion_with_websocket(prompt_id, client_id, updated_workflow, progress_callback)
+            
+            # Download edited image
+            images = await self._download_images(history)
+            edited_image_data = images[0] if images else b''
+            
+            # Prepare edit info
+            edit_info = {
+                'prompt_id': prompt_id,
+                'input_image': uploaded_filename,
+                'edit_prompt': edit_prompt,
+                'width': width,
+                'height': height,
+                'steps': steps,
+                'cfg': cfg,
+                'seed': seed,
+                'workflow': workflow_name,
+                'timestamp': time.time(),
+                'type': 'edit'
+            }
+            
+            self.logger.info(f"Image editing completed successfully")
+            return edited_image_data, edit_info
+            
+        except Exception as e:
+            self.logger.error(f"Image editing failed: {e}")
+            raise ComfyUIAPIError(f"Image editing failed: {e}")
+    
+    def _update_edit_workflow_parameters(
+        self,
+        workflow: Dict[str, Any],
+        input_image_path: str,
+        edit_prompt: str,
+        width: int = 1024,
+        height: int = 1024,
+        steps: int = 20,
+        cfg: float = 2.5,
+        seed: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Update edit workflow parameters for Flux Kontext editing."""
+        try:
+            # Create a copy to avoid modifying the original
+            updated_workflow = json.loads(json.dumps(workflow))
+            
+            # Generate random seed if not provided
+            if seed is None:
+                import random
+                seed = random.randint(0, 2**32 - 1)
+            
+            # Update workflow parameters based on the flux_kontext_edit.json structure
+            for node_id, node_data in updated_workflow.items():
+                class_type = node_data.get('class_type')
+                
+                if class_type == 'LoadImage':
+                    # Update input image (node 41)
+                    node_data['inputs']['image'] = input_image_path
+                
+                elif class_type == 'CLIPTextEncode':
+                    # Update edit prompt (node 6 - positive prompt)
+                    title = node_data.get('_meta', {}).get('title', '')
+                    if 'Positive' in title:
+                        node_data['inputs']['text'] = edit_prompt
+                
+                elif class_type == 'RandomNoise':
+                    # Update seed (node 25)
+                    node_data['inputs']['noise_seed'] = seed
+                
+                elif class_type == 'BasicScheduler':
+                    # Update steps (node 17)
+                    node_data['inputs']['steps'] = steps
+                
+                elif class_type == 'FluxGuidance':
+                    # Update CFG/guidance (node 26)
+                    node_data['inputs']['guidance'] = cfg
+                
+                elif class_type == 'EmptySD3LatentImage':
+                    # Update dimensions (node 27)
+                    node_data['inputs']['width'] = width
+                    node_data['inputs']['height'] = height
+                
+                elif class_type == 'ModelSamplingFlux':
+                    # Update dimensions for ModelSamplingFlux (node 30)
+                    node_data['inputs']['width'] = width
+                    node_data['inputs']['height'] = height
+            
+            self.logger.debug(f"Updated edit workflow parameters: prompt='{edit_prompt[:50]}...', size={width}x{height}")
+            return updated_workflow
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update edit workflow parameters: {e}")
+            raise ComfyUIAPIError(f"Failed to update edit workflow parameters: {e}")
+    
     async def upload_image(self, image_data: bytes, filename: str) -> str:
         """Upload image data to ComfyUI input directory."""
         try:

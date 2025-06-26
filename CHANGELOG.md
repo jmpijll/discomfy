@@ -5,6 +5,102 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-01-29
+
+### 🎉 Major Feature Release: Advanced Editing & Custom Animation Prompts
+
+### Added
+- **🎬 Custom Animation Prompts**: Users can now input custom prompts when animating images
+  - Original generation prompt is pre-filled as default
+  - Full text input with 500 character limit
+  - Users can modify prompts for different animation effects
+  - Example: Change "mountain landscape" → "mountain landscape with flowing clouds"
+- **✏️ Advanced Image Editing System**: Complete Flux Kontext integration
+  - New `/edit` slash command for direct image editing
+  - Natural language editing prompts (e.g., "add sunglasses and a hat")
+  - Post-generation Edit button on all generated images
+  - Customizable sampling steps (10-50) for quality control
+  - Support for PNG, JPG, WebP image uploads
+- **🎨 Enhanced Post-Generation Actions**: All action buttons now use interactive modals
+  - **Upscale Modal**: Choose factor (2x/4x/8x), denoise strength, and steps
+  - **Animation Modal**: Custom prompts + frame count, strength, and steps
+  - **Edit Modal**: Natural language editing with step control
+- **📊 Improved User Experience**: Consistent modal-based parameter selection
+  - Pre-filled sensible defaults for all parameters
+  - Input validation with clear error messages
+  - Enhanced progress tracking for all operations
+  - Dual prompt display (original + custom) in results
+
+### Enhanced
+- **Animation Workflow**: Complete overhaul of animation system
+  - `AnimationParameterModal` now includes prompt input field
+  - `_perform_animation()` method accepts custom animation prompts
+  - `PostGenerationAnimationModal` for consistent experience across views
+  - Enhanced result embeds showing both animation and original prompts
+- **Image Editing Workflow**: Professional-grade editing capabilities
+  - Flux Kontext workflow integration (`flux_kontext_edit.json`)
+  - `generate_edit()` method in ImageGenerator class
+  - `_update_edit_workflow_parameters()` for workflow customization
+  - Complete error handling and progress tracking
+- **Configuration System**: Extended workflow support
+  - Added `flux_kontext_edit` workflow configuration
+  - Updated example configurations with editing workflow
+  - Enhanced workflow type detection and validation
+
+### Technical Improvements
+- **Modal System**: Comprehensive Discord modal implementation
+  - `EditParameterModal` for individual image editing
+  - `PostGenerationEditModal` for post-generation editing
+  - Enhanced `AnimationParameterModal` with prompt input
+  - Consistent error handling across all modals
+- **Progress Tracking**: Enhanced progress callbacks for all operations
+  - Unified progress display format across editing and animation
+  - Real-time status updates with operation-specific messaging
+  - Improved error recovery and user feedback
+- **File Management**: Enhanced image and video handling
+  - Support for multiple image formats in editing
+  - Optimized file upload and processing
+  - Improved temporary file cleanup
+
+### User Interface
+- **Help Command**: Updated with comprehensive feature documentation
+  - Detailed explanation of custom animation prompts
+  - Complete image editing workflow examples
+  - Enhanced post-generation action descriptions
+  - Pro tips for optimal usage
+- **Interactive Feedback**: Enhanced user guidance
+  - Clear parameter descriptions in all modals
+  - Example prompts and usage hints
+  - Improved error messages with actionable suggestions
+
+### Configuration
+- **Workflow Integration**: Complete editing workflow support
+  - `flux_kontext_edit.json` workflow configuration
+  - Updated `config.example.json` with editing settings
+  - Enhanced workflow detection and validation
+  - Backward compatibility with existing setups
+
+### Documentation
+- **README Updates**: Comprehensive feature documentation
+  - New "Advanced Image Editing" section
+  - Enhanced "Professional Video Generation" with custom prompts
+  - Updated usage examples and quick start guide
+  - New feature highlights and key benefits
+- **Help System**: In-bot documentation updates
+  - Updated `/help` command with new features
+  - Enhanced command descriptions and examples
+  - Improved workflow explanations and tips
+
+### Compatibility
+- **Backward Compatibility**: All existing features remain unchanged
+  - Existing workflows continue to work without modification
+  - Previous animation behavior available as default
+  - Configuration files remain compatible
+- **Progressive Enhancement**: New features are additive
+  - Users can choose to use new prompts or keep defaults
+  - Existing buttons and commands work as before
+  - Optional parameters don't break existing usage
+
 ## [1.1.2] - 2025-01-29
 
 ### Fixed
