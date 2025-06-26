@@ -2,7 +2,7 @@
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.1.1  
+**🚀 Current Version**: v1.2.0  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
 
@@ -15,6 +15,8 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 ### 🔥 **Key Highlights:**
 - **Real-time Progress Tracking** with step-by-step updates
 - **Interactive Parameter Selection** for complete customization
+- **Custom Animation Prompts** - modify how your images animate
+- **Advanced Image Editing** with natural language prompts
 - **Extended Video Generation** with 15-minute timeout support
 - **Professional-grade Quality** using ComfyUI workflows
 - **Community Friendly** - anyone can use any generation's buttons
@@ -40,10 +42,19 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 
 ### 🎬 **Professional Video Generation**
 - **High-Quality Animation**: Convert images to smooth MP4 videos
+- **Custom Animation Prompts**: Modify how your images animate with natural language
+- **Pre-filled Defaults**: Original prompts auto-filled, edit as needed
 - **Multiple Frame Counts**: Choose 81, 121, or 161 frames for different lengths
 - **Extended Timeout**: 15-minute timeout supports complex video workflows
-- **Customizable Strength**: Fine-tune animation intensity
+- **Interactive Settings**: Customize strength, steps, and frame count via modal
 - **Real-time Progress**: Track every step of video generation
+
+### ✏️ **Advanced Image Editing**
+- **Natural Language Editing**: Describe changes in plain English
+- **Flux Kontext Integration**: Powered by advanced editing workflows
+- **Direct Upload Support**: Edit any image with `/edit` command
+- **Post-Generation Editing**: Edit button available on all generated images
+- **Customizable Parameters**: Adjust sampling steps for quality control
 
 ### 📊 **Real-Time Progress Tracking**
 - **Step-Based Accuracy**: Progress calculated from actual sampling steps, not time estimates
@@ -192,6 +203,11 @@ python bot.py
 ### **Basic Image Generation:**
 ```
 /generate prompt:a majestic dragon soaring through clouds
+```
+
+### **Image Editing:**
+```
+/edit image:photo.jpg prompt:add sunglasses and a hat steps:25
 ```
 
 ### **Advanced Parameters:**
