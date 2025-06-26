@@ -1,9 +1,19 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [1.2.1] - 2025-06-26
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### 🐛 Bug Fixes
+- **CRITICAL:** Fixed `NameError: name 'bot' is not defined` in slash commands
+- `/generate` command now works correctly without runtime errors
+- `/edit` command now works correctly without runtime errors
+- All interactive features and progress tracking function properly
+
+### 🔧 Technical Changes
+- Added proper bot instance access via `interaction.client` in command functions
+- Resolved variable scope issues in `generate_command()` and `edit_command()`
+
+### 📋 Notes
+This is a critical patch release that fixes a runtime error introduced in v1.2.0. All users should update immediately.
 
 ## [1.2.0] - 2025-01-29
 
