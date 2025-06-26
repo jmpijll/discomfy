@@ -281,6 +281,7 @@ async def generate_command(
     image: Optional[discord.Attachment] = None
 ):
     """Generate images or videos with interactive parameter selection."""
+    bot: ComfyUIBot = interaction.client
     try:
         # Check rate limiting first
         if not bot._check_rate_limit(interaction.user.id):
@@ -381,6 +382,7 @@ async def edit_command(
     steps: Optional[int] = 20
 ):
     """Edit an uploaded image using Flux Kontext with natural language prompts."""
+    bot: ComfyUIBot = interaction.client
     try:
         # Check rate limiting first
         if not bot._check_rate_limit(interaction.user.id):
