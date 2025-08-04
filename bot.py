@@ -630,7 +630,12 @@ class GenerationSetupView(discord.ui.View):
             lora_filename = lora_name if lora_name else None
             
             # Send progress update and clean up the setup message first
-            model_display = "Flux" if self.generation_params['model'] == "flux" else "HiDream"
+            if self.generation_params['model'] == "flux":
+                model_display = "Flux"
+            elif self.generation_params['model'] == "flux_krea":
+                model_display = "Flux Krea ✨ NEW"
+            else:
+                model_display = "HiDream"
             lora_info = f" with LoRA '{lora_name}' (strength: {lora_strength})" if lora_filename else " (no LoRA)"
             
             progress_embed = discord.Embed(
@@ -925,7 +930,12 @@ class LoRASelectMenu(discord.ui.Select):
                 
                 # Update the original message with the new view and updated info
                 try:
-                    model_display = "Flux" if view.model == "flux" else "HiDream"
+                    if view.model == "flux":
+                        model_display = "Flux"
+                    elif view.model == "flux_krea":
+                        model_display = "Flux Krea ✨ NEW"
+                    else:
+                        model_display = "HiDream"
                     updated_embed = discord.Embed(
                         title="🎨 Image Generation Setup",
                         description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}\n\n" +
