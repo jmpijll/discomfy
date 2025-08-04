@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.3] - 2025-01-29
+
+### 📚 Documentation Release
+
+### Updated
+- **Documentation Synchronization**: All documentation now properly reflects v1.2.3 release
+- **README.md**: Updated version information and feature highlights
+- **CHANGELOG.md**: Complete changelog entries for all versions
+- **Release Notes**: Comprehensive release documentation available
+
+### 📋 Notes
+This is a documentation release that ensures all project documentation is properly synchronized and up-to-date with the latest Flux Krea model features and dropdown fixes introduced in v1.2.2.
+
 ## [1.2.2] - 2025-01-29
 
 ### 🚀 New Model Release: Flux Krea
