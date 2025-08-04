@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.2.6] - 2025-01-29
+
+### 🔧 Smart Config Migration & LoRA Fixes
+
+### Added
+- **Smart Config Migration**: Automatic detection and addition of missing workflows to existing config files
+- **Preserves User Settings**: Migration only adds missing workflows, keeps all user customizations (IPs, tokens, etc.)
+- **Future-Proof Upgrades**: New workflows automatically added to existing installations
+- **LoRA Fallback Logic**: Enhanced LoRA filtering with intelligent fallback for better compatibility
+
+### Fixed
+- **Missing Flux Krea Model**: Users with older config.json files now automatically get flux_krea_lora workflow
+- **LoRA Selector Bug**: Fixed LoRA selector not appearing for flux models on servers where all LoRAs have 'hidream' in filename
+- **Config Compatibility**: Seamless upgrades for existing users without manual config editing
+- **Workflow Detection**: Better detection and handling of missing workflow configurations
+
+### Enhanced
+- **Migration Logging**: Clear logging of what workflows are being added during migration
+- **Fallback LoRA Filtering**: If strict filtering returns no LoRAs, allows all LoRAs for flux models
+- **Error Recovery**: Robust error handling during config migration process
+- **Backward Compatibility**: All existing configs continue to work while gaining new features
+
+### 📋 Technical Details
+- Config migration compares user config with config.example.json
+- Adds missing workflows from example or built-in defaults
+- Saves updated config automatically after successful migration
+- Enhanced LoRA filtering with fallback logic for edge cases
+- Improved logging for debugging config and LoRA issues
+
+### 📊 Impact
+This release ensures that users with existing config files automatically get new features (like Flux Krea model) without manual configuration, and fixes LoRA selector issues on servers with non-standard LoRA naming.
+
 ## [1.2.5] - 2025-01-29
 
 ### 🔧 Configuration & Setup Fixes
