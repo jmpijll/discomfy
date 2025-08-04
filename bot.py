@@ -360,6 +360,9 @@ async def generate_command(
                 inline=True
             )
             
+            # Initialize default LoRAs for the flux model
+            await setup_view.initialize_default_loras()
+            
             await interaction.response.send_message(embed=setup_embed, view=setup_view)
     
     except Exception as e:
@@ -565,14 +568,14 @@ class CompleteSetupView(discord.ui.View):
             self.add_item(VideoParameterSettingsButton())
             self.add_item(GenerateVideoButton())
         else:
-            # Image generation parameters
-            self.model = None
+            # Image generation parameters - default to flux
+            self.model = "flux"  # Set default model to flux
             self.selected_lora = None
             self.lora_strength = 1.0
             self.negative_prompt = ""
-            self.loras = []  # Initialize empty LoRA list
+            self.loras = []  # Will be populated during async initialization
             
-            # Default parameters based on model (will be set when model is selected)
+            # Default parameters for flux model
             self.width = 1024
             self.height = 1024
             self.steps = 30
@@ -582,11 +585,30 @@ class CompleteSetupView(discord.ui.View):
             
             # Add image generation controls
             self.add_item(ModelSelectMenu(self.model))
+            # LoRA selector will be added during async initialization if LoRAs are available
             self.add_item(ParameterSettingsButton())
             self.add_item(GenerateNowButton())
         
         # Track setup message for cleanup
         self.setup_message = None
+    
+    async def initialize_default_loras(self):
+        """Initialize LoRAs for the default flux model."""
+        if not self.video_mode and self.model == "flux":
+            try:
+                # Load LoRAs for flux model (same logic as in ModelSelectMenu callback)
+                async with self.bot.image_generator as gen:
+                    all_loras = await gen.get_available_loras()
+                    self.loras = gen.filter_loras_by_model(all_loras, self.model)
+                    
+                # Add LoRA selector if LoRAs are available
+                if self.loras:
+                    # Insert LoRA selector after ModelSelectMenu (index 1)
+                    self.insert_item(1, LoRASelectMenu(self.loras, self.selected_lora))
+                    
+            except Exception as e:
+                self.bot.logger.error(f"Failed to load default LoRAs: {e}")
+                self.loras = []
     
     async def on_timeout(self):
         """Called when the view times out."""
