@@ -1,10 +1,10 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 1.2.1** | Advanced AI Image & Video Generation for Discord
+**Version 1.2.2** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.2.0  
+**🚀 Current Version**: v1.2.2  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
 
@@ -30,7 +30,7 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 
 ### 🎨 **AI Image Generation**
 - **High-Quality Output**: Generate stunning images using advanced ComfyUI workflows
-- **Multiple Models**: Support for Flux, HiDream, and custom workflows
+- **Multiple Models**: Support for Flux, **Flux Krea ✨ NEW**, HiDream, and custom workflows
 - **LoRA Integration**: Dynamic LoRA loading with customizable strength
 - **Flexible Parameters**: Control width, height, steps, CFG, batch size, and seed
 - **Batch Generation**: Create multiple images in a single request
@@ -299,6 +299,7 @@ discomfy/
 ├── config.json          # Bot configuration
 ├── workflows/           # ComfyUI workflow files
 │   ├── flux_lora.json
+│   ├── flux_krea_lora.json  # NEW: Enhanced Flux Krea model
 │   ├── hidream_lora.json
 │   ├── upscale_config-1.json
 │   └── video_wan_vace_14B_i2v.json
@@ -385,4 +386,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v1.1.1 - The Professional Discord ComfyUI Bot*
+*DisComfy v1.2.2 - The Professional Discord ComfyUI Bot*
