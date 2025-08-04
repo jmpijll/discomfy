@@ -114,8 +114,8 @@ class ConfigManager:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
             else:
-                config_data = {}
-                self.logger.warning(f"Config file {self.config_path} not found, using defaults")
+                # Try to auto-create from example config
+                config_data = self._create_default_config()
             
             # Override with environment variables
             config_data = self._apply_env_overrides(config_data)
@@ -233,6 +233,69 @@ class ConfigManager:
         except Exception as e:
             self.logger.error(f"Failed to save configuration: {e}")
             raise
+    
+    def _create_default_config(self) -> Dict[str, Any]:
+        """Create default configuration from example file or built-in defaults."""
+        example_config_path = Path("config.example.json")
+        
+        if example_config_path.exists():
+            try:
+                # Load from example config
+                with open(example_config_path, 'r', encoding='utf-8') as f:
+                    config_data = json.load(f)
+                
+                # Create the actual config file for future use
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=2)
+                
+                self.logger.info(f"Created {self.config_path} from {example_config_path}")
+                return config_data
+                
+            except Exception as e:
+                self.logger.error(f"Failed to load example config: {e}")
+        
+        # Fall back to built-in minimal defaults
+        self.logger.warning(f"Config file {self.config_path} not found and no example available, using minimal defaults")
+        return {
+            "discord": {
+                "token": "SET_VIA_ENVIRONMENT"
+            },
+            "comfyui": {
+                "url": "http://localhost:8188"
+            },
+            "generation": {
+                "default_workflow": "flux_lora"
+            },
+            "workflows": {
+                "flux_lora": {
+                    "name": "Flux with LoRA",
+                    "description": "High-quality image generation with Flux model and LoRA support",
+                    "file": "flux_lora.json",
+                    "type": "image",
+                    "model_type": "flux",
+                    "enabled": True,
+                    "supports_lora": True
+                },
+                "flux_krea_lora": {
+                    "name": "Flux Krea with LoRA", 
+                    "description": "Enhanced Flux Krea model with LoRA support - high-quality creative generation",
+                    "file": "flux_krea_lora.json",
+                    "type": "image",
+                    "model_type": "flux_krea",
+                    "enabled": True,
+                    "supports_lora": True
+                },
+                "hidream_lora": {
+                    "name": "HiDream with LoRA",
+                    "description": "High-quality image generation with HiDream model and LoRA support", 
+                    "file": "hidream_lora.json",
+                    "type": "image",
+                    "model_type": "hidream",
+                    "enabled": True,
+                    "supports_lora": True
+                }
+            }
+        }
 
 # Global configuration manager instance
 config_manager = ConfigManager()
