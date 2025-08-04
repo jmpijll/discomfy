@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.2.7] - 2025-01-29
+
+### 🐛 UI Initialization Fix
+
+### Fixed
+- **Default LoRA Loading**: Fixed LoRA selector not appearing on initial `/generate` screen when flux is default model
+- **UI Initialization**: LoRA selector now appears immediately without requiring manual model switching
+- **Default Model Setup**: Properly initialize flux as default model with LoRA support from start
+- **User Experience**: No more need to switch between models to activate LoRA selector
+
+### Enhanced  
+- **Automatic LoRA Detection**: Default flux model now automatically loads and displays available LoRAs
+- **Seamless Workflow**: LoRA selector appears immediately when `/generate` command is used
+- **Better Default Behavior**: Flux model fully functional with LoRAs from the moment the interface loads
+
+### 📋 Technical Details
+- Set default model to "flux" instead of None in CompleteSetupView initialization
+- Added initialize_default_loras() method to load LoRAs for default model
+- Automatic insertion of LoRA selector when LoRAs are available for default model
+- Preserved all existing functionality while improving initial user experience
+
+### 📊 Impact
+This release fixes the final UI initialization issue where users had to manually switch models to access LoRAs, even though flux was supposed to be the default model with LoRA support.
+
 ## [1.2.6] - 2025-01-29
 
 ### 🔧 Smart Config Migration & LoRA Fixes
