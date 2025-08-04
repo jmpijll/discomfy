@@ -31,6 +31,15 @@
       "enabled": true,
       "supports_lora": true
     },
+    "flux_krea_lora": {
+      "name": "Flux Krea with LoRA",
+      "description": "Enhanced Flux Krea model with LoRA support - high-quality creative generation",
+      "file": "flux_krea_lora.json",
+      "type": "image",
+      "model_type": "flux_krea",
+      "enabled": true,
+      "supports_lora": true
+    },
     "hidream_lora": {
       "name": "HiDream with LoRA",
       "description": "High-quality image generation with HiDream model and LoRA support",
