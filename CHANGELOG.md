@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.2.2] - 2025-01-29
+
+### 🚀 New Model Release: Flux Krea
+
+### Added
+- **✨ Flux Krea Model**: New "Flux Krea ✨ NEW" model available in dropdown selection
+  - Enhanced creative generation capabilities with same performance as Flux
+  - Uses identical LoRA compatibility as standard Flux model
+  - Optimized settings: 1024x1024, 30 steps, CFG 5.0
+  - Seamless integration with all existing features (upscale, animate, edit)
+- **Enhanced Model Selection**: Users can now choose from 3 powerful models:
+  - 🚀 Flux (Default) - High-quality, fast generation
+  - ✨ Flux Krea ✨ NEW - Enhanced creative model
+  - 🎨 HiDream - Detailed, artistic images
+- **Workflow Integration**: Added `flux_krea_lora.json` workflow with automatic mapping
+
+### 🐛 Bug Fixes
+- **Fixed**: Model dropdown now shows "🤖 Flux (Default)" instead of appearing empty
+- **Fixed**: All model selections (including HiDream) now properly display when chosen
+- **Fixed**: Selected model remains visible in dropdown placeholder text
+- **Fixed**: Visual consistency across all model selection interfaces
+
+### 🔧 Technical Improvements
+- **LoRA System**: Enhanced filtering logic to recognize `flux_krea` as Flux-compatible
+- **Configuration**: Added `flux_krea_lora` workflow configuration to example config
+- **UI/UX**: Improved dropdown initialization with proper default selection
+- **Model Display**: Enhanced model names throughout progress and result displays
+- **Command Integration**: Updated `/loras` command with "Flux Krea ✨ NEW" option
+
+### 🎯 User Experience
+- **Better Defaults**: Dropdown immediately shows current selection instead of blank state
+- **Clear Feedback**: Enhanced visual indication of selected model across all interfaces
+- **LoRA Clarity**: Updated LoRA command to show Flux LoRAs work with both Flux variants
+- **Seamless Migration**: No configuration changes needed - works immediately after update
+
+### 📋 Compatibility
+- **Fully Backward Compatible**: All existing workflows continue unchanged
+- **LoRA Sharing**: Flux and Flux Krea models share the same LoRA pool
+- **Configuration**: No config file updates required for new features
+- **Performance**: No additional overhead or setup requirements
+
 ## [1.2.1] - 2025-06-26
 
 ### 🐛 Bug Fixes
