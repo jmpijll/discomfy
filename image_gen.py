@@ -1541,17 +1541,25 @@ class ImageGenerator:
     def filter_loras_by_model(self, loras: List[Dict[str, str]], model_type: str) -> List[Dict[str, str]]:
         """Filter LoRAs based on the selected model type."""
         try:
+            original_count = len(loras)
+            
             if model_type.lower() == 'hidream':
                 # Only include LoRAs with 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' in lora['filename'].lower()]
             elif model_type.lower() in ['flux', 'flux_krea']:
                 # Include LoRAs that don't have 'hidream' in the name (same LoRAs for both flux variants)
                 filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
+                
+                # Fallback: if no flux-specific LoRAs found, allow all LoRAs
+                # This handles cases where all LoRAs have 'hidream' in name but should work with flux too
+                if not filtered and loras:
+                    self.logger.warning(f"No flux-specific LoRAs found, allowing all {original_count} LoRAs for flux models")
+                    filtered = loras
             else:
                 # Unknown model type, return all
                 filtered = loras
             
-            self.logger.debug(f"Filtered {len(filtered)} LoRAs for model type '{model_type}'")
+            self.logger.debug(f"Filtered {len(filtered)}/{original_count} LoRAs for model type '{model_type}'")
             return filtered
             
         except Exception as e:

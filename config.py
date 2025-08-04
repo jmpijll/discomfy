@@ -113,6 +113,10 @@ class ConfigManager:
             if self.config_path.exists():
                 with open(self.config_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
+                
+                # Perform smart migration to add missing workflows
+                config_data = self._migrate_config(config_data)
+                
             else:
                 # Try to auto-create from example config
                 config_data = self._create_default_config()
@@ -294,6 +298,89 @@ class ConfigManager:
                     "enabled": True,
                     "supports_lora": True
                 }
+            }
+        }
+    
+    def _migrate_config(self, config_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Smart config migration that adds missing workflows while preserving user settings."""
+        try:
+            # Get the current example config to see what's new
+            example_config_path = Path("config.example.json")
+            example_workflows = {}
+            
+            if example_config_path.exists():
+                with open(example_config_path, 'r', encoding='utf-8') as f:
+                    example_data = json.load(f)
+                    example_workflows = example_data.get('workflows', {})
+            else:
+                # Use built-in defaults if no example
+                example_workflows = self._get_default_workflows()
+            
+            # Get user's current workflows
+            user_workflows = config_data.get('workflows', {})
+            
+            # Find missing workflows
+            missing_workflows = {}
+            for workflow_name, workflow_config in example_workflows.items():
+                if workflow_name not in user_workflows:
+                    missing_workflows[workflow_name] = workflow_config
+                    self.logger.info(f"Adding missing workflow: {workflow_name}")
+            
+            # Add missing workflows to user config
+            if missing_workflows:
+                config_data.setdefault('workflows', {}).update(missing_workflows)
+                
+                # Save the updated config back to file
+                with open(self.config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=2, ensure_ascii=False)
+                
+                self.logger.info(f"Config migrated: added {len(missing_workflows)} missing workflows")
+            
+            return config_data
+            
+        except Exception as e:
+            self.logger.error(f"Config migration failed: {e}")
+            # Return original config if migration fails
+            return config_data
+    
+    def _get_default_workflows(self) -> Dict[str, Any]:
+        """Get default workflow configurations."""
+        return {
+            "flux_lora": {
+                "name": "Flux with LoRA",
+                "description": "High-quality image generation with Flux model and LoRA support",
+                "file": "flux_lora.json",
+                "type": "image",
+                "model_type": "flux",
+                "enabled": True,
+                "supports_lora": True
+            },
+            "flux_krea_lora": {
+                "name": "Flux Krea with LoRA", 
+                "description": "Enhanced Flux Krea model with LoRA support - high-quality creative generation",
+                "file": "flux_krea_lora.json",
+                "type": "image",
+                "model_type": "flux_krea",
+                "enabled": True,
+                "supports_lora": True
+            },
+            "hidream_lora": {
+                "name": "HiDream with LoRA",
+                "description": "High-quality image generation with HiDream model and LoRA support", 
+                "file": "hidream_lora.json",
+                "type": "image",
+                "model_type": "hidream",
+                "enabled": True,
+                "supports_lora": True
+            },
+            "flux_kontext_edit": {
+                "name": "Flux Kontext Edit",
+                "description": "Edit images using natural language prompts with Flux Kontext model",
+                "file": "flux_kontext_edit.json",
+                "type": "edit",
+                "model_type": "flux",
+                "enabled": True,
+                "supports_lora": False
             }
         }
 
