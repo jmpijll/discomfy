@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.4] - 2025-01-29
+
+### 🐛 Critical Bug Fixes
+
+### Fixed
+- **Model Display Bug**: Fixed LoRA selection incorrectly showing "HiDream" when Flux Krea model is selected
+- **Generation Display Bug**: Fixed generation setup view model display logic for all three models
+- **Model Selection Logic**: All model selection now properly handles flux_krea model type
+- **UI Consistency**: Ensured proper model display across all components:
+  - 🚀 Flux - Standard model
+  - ✨ Flux Krea ✨ NEW - Enhanced creative model
+  - 🎨 HiDream - Detailed artistic model
+- **Generation Errors**: Resolved "model not available" error when generating with Flux Krea
+
+### 📋 Technical Details
+- Updated LoRA selection callback model display logic
+- Fixed generation setup view model display conditionals  
+- Improved model type handling in workflow mapping
+- Consistent model naming across all UI components
+
+### 📊 Impact
+This release fixes critical user-facing bugs that prevented proper usage of the new Flux Krea model introduced in v1.2.2.
+
 ## [1.2.3] - 2025-01-29
 
 ### 📚 Documentation Release
