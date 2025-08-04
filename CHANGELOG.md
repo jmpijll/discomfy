@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.2.5] - 2025-01-29
+
+### 🔧 Configuration & Setup Fixes
+
+### Fixed
+- **Missing Configuration Issue**: Fixed critical issue where users without `config.json` couldn't use any models
+- **Automatic Config Creation**: Bot now automatically creates `config.json` from `config.example.json` when missing
+- **Built-in Defaults**: Added fallback configuration with all three models (Flux, Flux Krea, HiDream) enabled
+- **First-Time Setup**: Seamless out-of-the-box experience for new users
+- **Config Migration**: Automatic workflow configuration migration for missing workflows
+
+### Added
+- **Smart Config Loading**: Enhanced configuration system with automatic setup
+- **Fallback Workflows**: Built-in workflow definitions ensure models always work
+- **Better Error Handling**: Improved error messages and automatic recovery
+
+### 📋 Technical Details
+- Auto-creation of `config.json` from `config.example.json`
+- Built-in fallback workflow configurations for all models
+- Enhanced config loading with automatic migration
+- Improved first-time user experience
+
+### 📊 Impact
+This release resolves the "Selected model is not available" errors that affected users without proper configuration files, ensuring all models work immediately after installation.
+
 ## [1.2.4] - 2025-01-29
 
 ### 🐛 Critical Bug Fixes
