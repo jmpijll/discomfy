@@ -1618,6 +1618,7 @@ async def status_command(interaction: discord.Interaction):
     model=[
         app_commands.Choice(name="All Models", value="all"),
         app_commands.Choice(name="Flux", value="flux"),
+        app_commands.Choice(name="Flux Krea ✨ NEW", value="flux_krea"),
         app_commands.Choice(name="HiDream", value="hidream")
     ]
 )
@@ -1665,8 +1666,8 @@ async def loras_command(interaction: discord.Interaction, model: str = "all"):
                 if len(flux_loras) > 10:
                     flux_list += f"\n... and {len(flux_loras) - 10} more"
                 embed.add_field(
-                    name=f"🚀 Flux LoRAs ({len(flux_loras)})",
-                    value=flux_list,
+                    name=f"🚀 Flux & Flux Krea LoRAs ({len(flux_loras)})",
+                    value=flux_list + "\n\n*Compatible with both Flux and Flux Krea models*",
                     inline=False
                 )
             
@@ -1714,6 +1715,10 @@ class ModelSelectMenu(discord.ui.Select):
     """Select menu for choosing AI model."""
     
     def __init__(self, selected_model: Optional[str] = None):
+        # Default to flux if no model selected yet
+        if selected_model is None:
+            selected_model = "flux"
+        
         options = [
             discord.SelectOption(
                 label="Flux (Default)",
@@ -1723,15 +1728,30 @@ class ModelSelectMenu(discord.ui.Select):
                 default=(selected_model == "flux")
             ),
             discord.SelectOption(
+                label="Flux Krea ✨ NEW",
+                value="flux_krea",
+                description="Enhanced Flux Krea model - creative, high-quality generation",
+                emoji="✨",
+                default=(selected_model == "flux_krea")
+            ),
+            discord.SelectOption(
                 label="HiDream",
                 value="hidream", 
                 description="Detailed, artistic images - 1216x1216, 50 steps",
-                emoji="🎨"
+                emoji="🎨",
+                default=(selected_model == "hidream")
             )
         ]
         
+        # Set placeholder to show current selection or default
+        current_label = "Flux (Default)"  # Default
+        for option in options:
+            if option.default:
+                current_label = option.label
+                break
+        
         super().__init__(
-            placeholder="🤖 Choose AI Model...",
+            placeholder=f"🤖 {current_label}",
             min_values=1,
             max_values=1,
             options=options
@@ -1760,6 +1780,12 @@ class ModelSelectMenu(discord.ui.Select):
             
             # Apply model-specific defaults
             if selected_model == "flux":
+                view.width = 1024
+                view.height = 1024
+                view.steps = 30
+                view.cfg = 5.0
+                view.negative_prompt = ""
+            elif selected_model == "flux_krea":
                 view.width = 1024
                 view.height = 1024
                 view.steps = 30
@@ -1795,7 +1821,12 @@ class ModelSelectMenu(discord.ui.Select):
             view.add_item(GenerateNowButton())
             
             # Update the embed
-            model_display = "Flux" if selected_model == "flux" else "HiDream"
+            if selected_model == "flux":
+                model_display = "Flux"
+            elif selected_model == "flux_krea":
+                model_display = "Flux Krea ✨ NEW"
+            else:
+                model_display = "HiDream"
             updated_embed = discord.Embed(
                 title="🎨 Image Generation Setup",
                 description=f"**Prompt:** {view.prompt[:200]}{'...' if len(view.prompt) > 200 else ''}\n\n" +
@@ -2050,7 +2081,12 @@ class GenerateNowButton(discord.ui.Button):
                 return
             
             # Show initial progress
-            model_display = "Flux" if view.model == "flux" else "HiDream"
+            if view.model == "flux":
+                model_display = "Flux"
+            elif view.model == "flux_krea":
+                model_display = "Flux Krea ✨ NEW"
+            else:
+                model_display = "HiDream"
             progress_embed = discord.Embed(
                 title="🎨 Starting Image Generation...",
                 description=f"**Prompt:** {view.prompt[:150]}{'...' if len(view.prompt) > 150 else ''}",
