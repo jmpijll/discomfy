@@ -275,6 +275,13 @@ class ImageGenerator:
         self._bot_client_id = str(uuid.uuid4())
         self.logger.info(f"🤖 Bot session initialized with client_id: {self._bot_client_id}")
         
+        # Persistent WebSocket connection for ALL generations
+        self._persistent_websocket = None
+        self._websocket_task = None
+        self._websocket_connected = False
+        self._active_generations: Dict[str, dict] = {}  # prompt_id -> progress_data
+        self._websocket_lock = asyncio.Lock()
+        
     async def __aenter__(self):
         """Async context manager entry."""
         async with self._session_lock:
@@ -283,6 +290,10 @@ class ImageGenerator:
                     timeout=aiohttp.ClientTimeout(total=self.config.comfyui.timeout),
                     connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
                 )
+        
+        # Start persistent WebSocket if not already running
+        await self._ensure_websocket_connected()
+        
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -291,6 +302,92 @@ class ImageGenerator:
             if self.session and not self.session.closed:
                 await self.session.close()
                 self.session = None
+        
+        # Note: We DON'T close the persistent WebSocket here
+        # It stays alive for the entire bot session to handle concurrent generations
+    
+    async def _ensure_websocket_connected(self):
+        """Ensure persistent WebSocket is connected and monitoring."""
+        async with self._websocket_lock:
+            if not self._websocket_connected or self._websocket_task is None or self._websocket_task.done():
+                self.logger.info("🔌 Starting persistent WebSocket connection...")
+                ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
+                self._websocket_task = asyncio.create_task(self._persistent_websocket_monitor(ws_url))
+                # Wait a moment for connection to establish
+                await asyncio.sleep(0.5)
+    
+    async def _persistent_websocket_monitor(self, ws_url: str):
+        """Persistent WebSocket that monitors ALL generations."""
+        try:
+            import websockets
+            
+            full_ws_url = f"{ws_url}?clientId={self._bot_client_id}"
+            self.logger.info(f"📡 Connecting persistent WebSocket: {full_ws_url[:50]}...")
+            
+            async with websockets.connect(full_ws_url) as websocket:
+                self._websocket_connected = True
+                self.logger.info(f"📡 Persistent WebSocket CONNECTED for bot session {self._bot_client_id[:8]}...")
+                
+                while True:
+                    try:
+                        message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                        
+                        if isinstance(message, str):
+                            data = json.loads(message)
+                            message_type = data.get('type')
+                            message_data = data.get('data', {})
+                            
+                            # Skip monitoring messages
+                            if message_type == 'crystools.monitor':
+                                continue
+                            
+                            # Get prompt_id from message
+                            msg_prompt_id = message_data.get('prompt_id')
+                            
+                            # Find which active generation this is for
+                            if msg_prompt_id and msg_prompt_id in self._active_generations:
+                                progress_data = self._active_generations[msg_prompt_id]
+                                
+                                if message_type == 'progress':
+                                    current_step = message_data.get('value', 0)
+                                    max_steps = message_data.get('max', 0)
+                                    progress_data['step_current'] = current_step
+                                    progress_data['step_total'] = max_steps
+                                    progress_data['last_websocket_update'] = time.time()
+                                    self.logger.info(f"📈 Progress for {msg_prompt_id[:8]}...: {current_step}/{max_steps}")
+                                
+                                elif message_type == 'executing':
+                                    node_id = message_data.get('node')
+                                    if node_id is not None:
+                                        progress_data['current_node'] = str(node_id)
+                                        progress_data['last_websocket_update'] = time.time()
+                                    else:
+                                        # Completed
+                                        progress_data['completed'] = True
+                                        progress_data['last_websocket_update'] = time.time()
+                                        self.logger.info(f"✅ Completion detected for {msg_prompt_id[:8]}...")
+                                
+                                elif message_type == 'progress_state':
+                                    progress_data['last_websocket_update'] = time.time()
+                                
+                                elif message_type == 'execution_cached':
+                                    cached_nodes = message_data.get('nodes', [])
+                                    progress_data['cached_nodes'] = cached_nodes
+                                    progress_data['last_websocket_update'] = time.time()
+                    
+                    except asyncio.TimeoutError:
+                        continue
+                    except json.JSONDecodeError:
+                        continue
+                    
+        except asyncio.CancelledError:
+            self.logger.info("📡 Persistent WebSocket monitor cancelled")
+            raise
+        except Exception as e:
+            self.logger.warning(f"📡 Persistent WebSocket error: {e}")
+        finally:
+            self._websocket_connected = False
+            self.logger.info("📡 Persistent WebSocket disconnected")
     
     async def test_connection(self) -> bool:
         """Test connection to ComfyUI server."""
@@ -637,7 +734,7 @@ class ImageGenerator:
             self.logger.info(f"📡 WebSocket node tracking task ended for prompt {prompt_id}")
     
     async def _wait_for_completion_polling_enhanced(self, prompt_id: str, client_id: str, progress_callback=None, progress: ProgressInfo = None) -> Dict[str, Any]:
-        """Enhanced HTTP polling method with optional WebSocket node tracking."""
+        """Enhanced HTTP polling method with persistent WebSocket tracking."""
         try:
             # Dynamic timeout based on expected generation type
             base_timeout = self.config.comfyui.timeout
@@ -663,19 +760,10 @@ class ImageGenerator:
             last_progress_sent = 0.0
             progress_update_count = 0
             
-            # Try to establish WebSocket for node-level tracking (optional and best-effort)
-            # NOTE: WebSocket may not receive messages for queued generations due to client_id filtering
-            # HTTP polling is the primary mechanism for progress tracking
-            websocket_task = None
+            # Register with persistent WebSocket
             websocket_progress = {}
-            
-            try:
-                import websockets
-                ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
-                self.logger.info(f"📡 Starting WebSocket tracking for prompt {prompt_id} (best-effort)")
-                websocket_task = asyncio.create_task(self._track_websocket_progress(ws_url, prompt_id, client_id, websocket_progress))
-            except Exception as ws_error:
-                self.logger.info(f"WebSocket unavailable, using HTTP polling only: {ws_error}")
+            self._active_generations[prompt_id] = websocket_progress
+            self.logger.info(f"📝 Registered generation {prompt_id[:8]}... with persistent WebSocket")
             
             self.logger.info(f"Starting enhanced polling for prompt {prompt_id} (timeout: {max_wait_time}s, interval: 1s)")
             
@@ -697,9 +785,10 @@ class ImageGenerator:
                                         if progress_callback:
                                             await progress_callback(progress)
                                         
-                                        # Clean up WebSocket task
-                                        if websocket_task:
-                                            websocket_task.cancel()
+                                        # Unregister from persistent WebSocket
+                                        if prompt_id in self._active_generations:
+                                            del self._active_generations[prompt_id]
+                                            self.logger.info(f"📝 Unregistered generation {prompt_id[:8]}...")
                                             
                                         self.logger.info(f"✅ Generation completed for prompt {prompt_id}")
                                         self.logger.info(f"📊 Total progress updates sent: {progress_update_count}")
@@ -903,9 +992,10 @@ class ImageGenerator:
                     status_msg += f" | Updates sent: {progress_update_count}"
                     self.logger.info(f"Still waiting for prompt {prompt_id}... ({elapsed:.0f}s) - {status_msg}")
             
-            # Clean up WebSocket task
-            if websocket_task:
-                websocket_task.cancel()
+            # Unregister from persistent WebSocket
+            if prompt_id in self._active_generations:
+                del self._active_generations[prompt_id]
+                self.logger.info(f"📝 Unregistered generation {prompt_id[:8]}... (timeout)")
             
             # Timeout reached
             elapsed = time.time() - start_time
@@ -913,6 +1003,11 @@ class ImageGenerator:
             raise ComfyUIAPIError(f"Generation timeout after {max_wait_time} seconds - this may indicate ComfyUI is overloaded")
             
         except Exception as e:
+            # Unregister from persistent WebSocket on error
+            if prompt_id in self._active_generations:
+                del self._active_generations[prompt_id]
+                self.logger.info(f"📝 Unregistered generation {prompt_id[:8]}... (error)")
+            
             if "timeout" not in str(e).lower():
                 self.logger.error(f"Error in enhanced polling: {e}")
             raise
