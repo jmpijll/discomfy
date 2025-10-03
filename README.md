@@ -1,10 +1,10 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 1.2.10** | Advanced AI Image & Video Generation for Discord
+**Version 1.2.11** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.2.10  
+**🚀 Current Version**: v1.2.11  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
 

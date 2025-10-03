@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.2.11] - 2025-10-04
+
+### 🔧 Critical Fix: True Persistent WebSocket Implementation
+
+### Fixed
+- **Concurrent Generation Completion**: Fixed bug where second generation never completed until third started
+- **Progress Tracking**: Fixed issue where progress stayed on "Checking status..." then jumped to 100%
+- **WebSocket Architecture**: Implemented single persistent WebSocket that monitors ALL generations simultaneously
+- **Session Management**: WebSocket now stays alive across multiple `async with` context manager cycles
+
+### Technical Details
+- Previous fix (v1.2.10) used shared client_id but still created separate WebSocket per generation
+- Multiple WebSockets competed for messages, causing progress tracking failures
+- New architecture: ONE persistent WebSocket for entire bot session
+- Each generation registers/unregisters with `_active_generations` dictionary
+- Persistent monitor routes messages to correct generation by `prompt_id`
+- WebSocket starts on first generation, persists across all subsequent generations
+
+### Root Cause (v1.2.10)
+- `async with generator` pattern created/destroyed sessions per generation
+- Each generation spawned its own WebSocket connection
+- Even with shared client_id, multiple connections interfered with each other
+- Solution required architectural change: persistent WebSocket independent of sessions
+
+### Impact
+- ✅ All concurrent generations now complete correctly without manual intervention
+- ✅ Real-time progress tracking works for all generations (step counts, percentages)
+- ✅ No more "stuck at Checking status" issues
+- ✅ No more requiring third generation to detect second's completion
+- ✅ True concurrent queue handling as originally intended
+
 ## [1.2.10] - 2025-10-03
 
 ### 🐛 Critical Queue Handling Fix
