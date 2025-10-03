@@ -1424,13 +1424,14 @@ class ImageGenerator:
         cfg: float = 2.5,
         seed: Optional[int] = None,
         progress_callback=None,
-        workflow_type: str = "flux"
+        workflow_type: str = "flux",
+        additional_images: Optional[List[bytes]] = None
     ) -> Tuple[bytes, Dict[str, Any]]:
         """
         Edit an image using ComfyUI edit workflow (Flux Kontext or Qwen).
         
         Args:
-            input_image_data: Image data as bytes
+            input_image_data: Image data as bytes (primary input)
             edit_prompt: Prompt describing the desired edit
             width: Output image width (default: 1024)
             height: Output image height (default: 1024)
@@ -1439,6 +1440,7 @@ class ImageGenerator:
             seed: Random seed (auto-generated if None)
             progress_callback: Optional callback for progress updates
             workflow_type: Type of edit workflow to use: "flux" or "qwen" (default: "flux")
+            additional_images: List of additional image data for multi-image Qwen edits (optional)
         
         Returns:
             Tuple of (edited_image_data, edit_info)
@@ -1454,16 +1456,37 @@ class ImageGenerator:
             if len(edit_prompt) > self.config.security.max_prompt_length:
                 raise ValueError(f"Edit prompt too long (max {self.config.security.max_prompt_length} characters)")
             
-            # Upload image to ComfyUI
+            # Upload primary image to ComfyUI
             upload_filename = f"edit_input_{int(time.time())}.png"
             uploaded_filename = await self.upload_image(input_image_data, upload_filename)
             
-            # Select workflow based on type
+            # Upload additional images if provided (for multi-image Qwen edits)
+            uploaded_additional_filenames = []
+            if additional_images:
+                for idx, img_data in enumerate(additional_images):
+                    additional_filename = f"edit_input_{int(time.time())}_{idx+2}.png"
+                    uploaded_additional = await self.upload_image(img_data, additional_filename)
+                    uploaded_additional_filenames.append(uploaded_additional)
+                    await asyncio.sleep(0.1)  # Small delay to ensure unique timestamps
+            
+            # Determine total image count for Qwen workflow selection
+            total_images = 1 + len(uploaded_additional_filenames)
+            
+            # Select workflow based on type and image count
             if workflow_type.lower() == "qwen":
-                workflow_name = "qwen_image_edit"
-                self.logger.info(f"Starting Qwen image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
+                if total_images == 1:
+                    workflow_name = "qwen_image_edit"
+                elif total_images == 2:
+                    workflow_name = "qwen_image_edit_2"
+                elif total_images == 3:
+                    workflow_name = "qwen_image_edit_3"
+                else:
+                    raise ValueError(f"Qwen edit supports 1-3 images, got {total_images}")
+                self.logger.info(f"Starting Qwen image editing ({total_images} images): {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
             else:
                 workflow_name = "flux_kontext_edit"
+                if additional_images:
+                    self.logger.warning("Additional images provided for Flux edit, but Flux only supports single image. Ignoring additional images.")
                 self.logger.info(f"Starting Flux image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
             
             # Load and update workflow
@@ -1471,7 +1494,7 @@ class ImageGenerator:
             
             if workflow_type.lower() == "qwen":
                 updated_workflow = self._update_qwen_edit_workflow_parameters(
-                    workflow, uploaded_filename, edit_prompt, steps, cfg, seed
+                    workflow, uploaded_filename, edit_prompt, steps, cfg, seed, uploaded_additional_filenames
                 )
             else:
                 updated_workflow = self._update_edit_workflow_parameters(
@@ -1492,6 +1515,7 @@ class ImageGenerator:
             edit_info = {
                 'prompt_id': prompt_id,
                 'input_image': uploaded_filename,
+                'additional_images': uploaded_additional_filenames,
                 'edit_prompt': edit_prompt,
                 'width': width,
                 'height': height,
@@ -1500,11 +1524,12 @@ class ImageGenerator:
                 'seed': seed,
                 'workflow': workflow_name,
                 'workflow_type': workflow_type,
+                'total_images': total_images,
                 'timestamp': time.time(),
                 'type': 'edit'
             }
             
-            self.logger.info(f"Image editing completed successfully using {workflow_type}")
+            self.logger.info(f"Image editing completed successfully using {workflow_type} with {total_images} input image(s)")
             return edited_image_data, edit_info
             
         except Exception as e:
@@ -1582,9 +1607,10 @@ class ImageGenerator:
         edit_prompt: str,
         steps: int = 8,
         cfg: float = 1,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        additional_image_paths: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Update Qwen edit workflow parameters."""
+        """Update Qwen edit workflow parameters for single or multi-image workflows."""
         try:
             # Create a copy to avoid modifying the original
             updated_workflow = json.loads(json.dumps(workflow))
@@ -1594,17 +1620,34 @@ class ImageGenerator:
                 import random
                 seed = random.randint(0, 2**32 - 1)
             
+            # Collect all LoadImage nodes for multi-image assignment
+            load_image_nodes = []
+            for node_id, node_data in updated_workflow.items():
+                if node_data.get('class_type') == 'LoadImage':
+                    load_image_nodes.append((node_id, node_data))
+            
+            # Sort by node ID to ensure consistent ordering
+            load_image_nodes.sort(key=lambda x: int(x[0]))
+            
             # Update workflow parameters based on the qwen_image_edit.json structure
             for node_id, node_data in updated_workflow.items():
                 class_type = node_data.get('class_type')
                 
                 if class_type == 'LoadImage':
-                    # Update input image (node 78)
-                    node_data['inputs']['image'] = input_image_path
+                    # Assign images based on node order
+                    node_index = next(i for i, (nid, _) in enumerate(load_image_nodes) if nid == node_id)
+                    
+                    if node_index == 0:
+                        # First LoadImage node gets the primary image
+                        node_data['inputs']['image'] = input_image_path
+                    elif additional_image_paths and node_index - 1 < len(additional_image_paths):
+                        # Subsequent LoadImage nodes get additional images
+                        node_data['inputs']['image'] = additional_image_paths[node_index - 1]
+                    else:
+                        self.logger.warning(f"No image provided for LoadImage node {node_id} (index {node_index})")
                 
                 elif class_type == 'TextEncodeQwenImageEditPlus':
                     # Update edit prompt (node 111 - positive prompt)
-                    title = node_data.get('_meta', {}).get('title', '')
                     prompt_value = node_data['inputs'].get('prompt', '')
                     
                     # Node 111 has the actual prompt, node 110 is empty/negative
@@ -1618,7 +1661,8 @@ class ImageGenerator:
                     node_data['inputs']['steps'] = steps
                     node_data['inputs']['cfg'] = cfg
             
-            self.logger.debug(f"Updated Qwen edit workflow parameters: prompt='{edit_prompt[:50]}...', steps={steps}")
+            total_images = 1 + (len(additional_image_paths) if additional_image_paths else 0)
+            self.logger.debug(f"Updated Qwen edit workflow parameters: {total_images} image(s), prompt='{edit_prompt[:50]}...', steps={steps}")
             return updated_workflow
             
         except Exception as e:

@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.3.0] - 2025-10-04
+
+### ✨ New Feature: Multi-Image Qwen Editing
+
+### Added
+- **Multi-Image Qwen Edit**: `/editqwen` command now supports 1-3 input images
+- **Workflow Selection**: Automatically selects correct workflow based on image count:
+  - 1 image → `qwen_image_edit.json`
+  - 2 images → `qwen_image_edit_2.json`
+  - 3 images → `qwen_image_edit_3.json`
+- **Optional Image Parameters**: Added `image2` and `image3` optional parameters to `/editqwen` command
+- **Smart Validation**: Ensures image3 cannot be provided without image2
+
+### Changed
+- **Image Generator**: Enhanced `generate_edit()` method with `additional_images` parameter
+- **Workflow Parameters**: Updated `_update_qwen_edit_workflow_parameters()` to handle multiple `LoadImage` nodes
+- **Progress Display**: Shows total image count in progress messages
+- **Initial Response**: Displays all input images with their file sizes
+
+### Technical Details
+- Multi-image data passed as `List[bytes]` via `additional_images` parameter
+- Images uploaded with unique timestamps to ComfyUI
+- LoadImage nodes automatically assigned to correct images by node ID order
+- All Qwen workflows (1, 2, and 3 images) fully supported
+
+### Known Issues
+- **Concurrent Queue Handling**: Second generation may not complete until third is started (documented in `KNOWN_ISSUES.md`)
+
 ## [1.2.11] - 2025-10-04
 
 ### 🔧 Critical Fix: True Persistent WebSocket Implementation
