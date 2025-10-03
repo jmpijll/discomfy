@@ -1,10 +1,10 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 1.2.7** | Advanced AI Image & Video Generation for Discord
+**Version 1.2.8** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.2.7  
+**🚀 Current Version**: v1.2.8  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
 
@@ -52,10 +52,12 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 - **Real-time Progress**: Track every step of video generation
 
 ### ✏️ **Advanced Image Editing**
+- **Dual Editing Models**: Choose between Flux Kontext or Qwen 2.5 VL for editing
 - **Natural Language Editing**: Describe changes in plain English
-- **Flux Kontext Integration**: Powered by advanced editing workflows
-- **Direct Upload Support**: Edit any image with `/edit` command
-- **Post-Generation Editing**: Edit button available on all generated images
+- **Flux Kontext**: High-quality editing with 10-50 steps (slower, more detailed)
+- **Qwen 2.5 VL**: Ultra-fast editing with 4-20 steps (faster, efficient)
+- **Direct Upload Support**: Edit any image with `/editflux` or `/editqwen` commands
+- **Post-Generation Editing**: Both edit buttons available on all generated images
 - **Customizable Parameters**: Adjust sampling steps for quality control
 
 ### 📊 **Real-Time Progress Tracking**
@@ -207,9 +209,14 @@ python bot.py
 /generate prompt:a majestic dragon soaring through clouds
 ```
 
-### **Image Editing:**
+### **Image Editing (Flux Kontext - High Quality):**
 ```
-/edit image:photo.jpg prompt:add sunglasses and a hat steps:25
+/editflux image:photo.jpg prompt:add sunglasses and a hat steps:25
+```
+
+### **Image Editing (Qwen - Ultra Fast):**
+```
+/editqwen image:photo.jpg prompt:add sunglasses and a hat steps:8
 ```
 
 ### **Advanced Parameters:**
@@ -225,8 +232,10 @@ python bot.py
 ### **Post-Generation Actions:**
 1. Generate an image with `/generate`
 2. Click 🔍 **Upscale** → Choose 4x ratio, adjust settings
-3. Click 🎬 **Animate** → Select 161 frames, set strength
-4. Anyone can use these buttons on any generation!
+3. Click ✏️ **Flux Edit** → High-quality editing with Flux Kontext
+4. Click ⚡ **Qwen Edit** → Ultra-fast editing with Qwen 2.5 VL
+5. Click 🎬 **Animate** → Select 161 frames, set strength
+6. Anyone can use these buttons on any generation!
 
 ---
 
@@ -299,7 +308,9 @@ discomfy/
 ├── config.json          # Bot configuration
 ├── workflows/           # ComfyUI workflow files
 │   ├── flux_lora.json
-│   ├── flux_krea_lora.json  # NEW: Enhanced Flux Krea model
+│   ├── flux_krea_lora.json    # Enhanced Flux Krea model
+│   ├── flux_kontext_edit.json # Flux Kontext editing
+│   ├── qwen_image_edit.json   # NEW: Qwen 2.5 VL fast editing
 │   ├── hidream_lora.json
 │   ├── upscale_config-1.json
 │   └── video_wan_vace_14B_i2v.json
@@ -386,4 +397,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v1.2.7 - The Professional Discord ComfyUI Bot*
+*DisComfy v1.2.8 - The Professional Discord ComfyUI Bot*

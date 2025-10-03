@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.2.8] - 2025-10-03
+
+### 🚀 Dual Image Editing Models - Choose Your Speed!
+
+### Added
+- **Qwen 2.5 VL Ultra-Fast Editing**: New `/editqwen` command for lightning-fast image editing (30-60 seconds)
+- **Dual Edit Buttons**: Both **✏️ Flux Edit** and **⚡ Qwen Edit** buttons on all generated images
+- **Smart Parameter Validation**: Context-aware step validation (4-20 for Qwen, 10-50 for Flux)
+- **Automatic CFG Adjustment**: Optimized CFG values per workflow (1.0 for Qwen, 2.5 for Flux)
+- **New Workflow Integration**: Added `qwen_image_edit.json` workflow support
+
+### Changed
+- **Command Renamed**: `/edit` → `/editflux` (Flux Kontext high-quality editing)
+- **Edit Buttons Split**: Single edit button now split into Flux and Qwen variants
+- **Modal Titles**: Context-aware modal titles indicating which model is being used
+- **Progress Messages**: Model-specific progress indicators and status messages
+
+### Enhanced
+- **Flexible Editing Workflow**: Choose between quality (Flux) or speed (Qwen)
+- **Model-Specific Defaults**: Each model has optimized default parameters
+- **Workflow Type Parameter**: Added `workflow_type` to `generate_edit()` method
+- **Improved Documentation**: Updated README with dual editing model information
+- **Better User Feedback**: Clear indication of which model is being used
+
+### Technical Details
+- Added `_update_qwen_edit_workflow_parameters()` method to ImageGenerator
+- Updated `generate_edit()` to support both "flux" and "qwen" workflow types
+- Modified edit button callbacks to pass workflow type to modals
+- Enhanced modal classes to accept and handle workflow_type parameter
+- Updated command registration to include both editflux and editqwen commands
+
+### 📊 Impact
+This release introduces a game-changing dual editing system that lets users choose between high-quality detailed editing or ultra-fast editing based on their needs. Qwen 2.5 VL provides excellent results in a fraction of the time (30-60 seconds vs 1-3 minutes), making it perfect for rapid iteration and testing.
+
 ## [1.2.7] - 2025-01-29
 
 ### 🐛 UI Initialization Fix

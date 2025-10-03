@@ -372,13 +372,13 @@ async def generate_command(
         except:
             pass
 
-@app_commands.command(name="edit", description="Edit an image using AI with natural language prompts")
+@app_commands.command(name="editflux", description="Edit an image using Flux Kontext AI with natural language prompts")
 @app_commands.describe(
     image="Upload the image you want to edit",
     prompt="Describe what you want to change in the image",
     steps="Number of sampling steps (10-50, default: 20)"
 )
-async def edit_command(
+async def editflux_command(
     interaction: discord.Interaction,
     image: discord.Attachment,
     prompt: str,
@@ -457,7 +457,7 @@ async def edit_command(
             f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5 | Size: 1024x1024"
         )
         
-        # Perform the edit
+        # Perform the edit using Flux workflow
         async with bot.image_generator as gen:
             edited_data, edit_info = await gen.generate_edit(
                 input_image_data=image_data,
@@ -466,6 +466,7 @@ async def edit_command(
                 height=1024,
                 steps=steps,
                 cfg=2.5,
+                workflow_type="flux",
                 progress_callback=progress_callback
             )
         
@@ -528,10 +529,185 @@ async def edit_command(
             view=edited_view
         )
         
-        bot.logger.info(f"Successfully processed /edit command for {interaction.user}")
+        bot.logger.info(f"Successfully processed /editflux command for {interaction.user}")
         
     except Exception as e:
-        bot.logger.error(f"Error in edit command: {e}")
+        bot.logger.error(f"Error in editflux command: {e}")
+        try:
+            error_embed = discord.Embed(
+                title="❌ Image Editing Failed",
+                description=f"Failed to edit image: {str(e)[:200]}{'...' if len(str(e)) > 200 else ''}",
+                color=discord.Color.red()
+            )
+            
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=error_embed, ephemeral=True)
+        except:
+            pass
+
+@app_commands.command(name="editqwen", description="Edit an image using Qwen AI with natural language prompts")
+@app_commands.describe(
+    image="Upload the image you want to edit",
+    prompt="Describe what you want to change in the image",
+    steps="Number of sampling steps (4-20, default: 8)"
+)
+async def editqwen_command(
+    interaction: discord.Interaction,
+    image: discord.Attachment,
+    prompt: str,
+    steps: Optional[int] = 8
+):
+    """Edit an uploaded image using Qwen Image Edit with natural language prompts."""
+    bot: ComfyUIBot = interaction.client
+    try:
+        # Check rate limiting first
+        if not bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're making requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        # Validate image
+        if not image.content_type or not image.content_type.startswith('image/'):
+            await interaction.response.send_message("❌ Please upload a valid image file.", ephemeral=True)
+            return
+        
+        if image.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
+            await interaction.response.send_message(f"❌ Image too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
+            return
+        
+        # Validate prompt
+        if not prompt.strip():
+            await interaction.response.send_message("❌ Edit prompt cannot be empty!", ephemeral=True)
+            return
+        
+        if len(prompt) > bot.config.security.max_prompt_length:
+            await interaction.response.send_message(f"❌ Prompt too long! Maximum {bot.config.security.max_prompt_length} characters.", ephemeral=True)
+            return
+        
+        # Validate steps
+        if steps is not None and not (4 <= steps <= 20):
+            await interaction.response.send_message("❌ Steps must be between 4 and 20 for Qwen!", ephemeral=True)
+            return
+        
+        # Use default if steps not provided
+        if steps is None:
+            steps = 8
+        
+        # Download image data
+        image_data = await image.read()
+        
+        # Send initial response
+        initial_embed = discord.Embed(
+            title="✏️ Starting Image Edit - Qwen",
+            description=f"**Edit Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
+            color=discord.Color.purple()
+        )
+        
+        initial_embed.add_field(
+            name="Input Image",
+            value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+            inline=True
+        )
+        
+        initial_embed.add_field(
+            name="Settings",
+            value=f"**Model:** Qwen 2.5 VL\n**Steps:** {steps}\n**CFG:** 1.0\n**Speed:** Very Fast",
+            inline=True
+        )
+        
+        initial_embed.add_field(
+            name="Processing",
+            value="🔄 Uploading image and starting edit...\n⏱️ Estimated time: 30-60 seconds",
+            inline=False
+        )
+        
+        await interaction.response.send_message(embed=initial_embed)
+        
+        # Create progress callback
+        progress_callback = await bot._create_unified_progress_callback(
+            interaction,
+            "Image Editing",
+            prompt,
+            f"Method: Qwen 2.5 VL | Steps: {steps} | CFG: 1.0"
+        )
+        
+        # Perform the edit using Qwen workflow
+        async with bot.image_generator as gen:
+            edited_data, edit_info = await gen.generate_edit(
+                input_image_data=image_data,
+                edit_prompt=prompt,
+                width=1024,
+                height=1024,
+                steps=steps,
+                cfg=1.0,
+                workflow_type="qwen",
+                progress_callback=progress_callback
+            )
+        
+        # Send final completion status
+        try:
+            from image_gen import ProgressInfo
+            final_progress = ProgressInfo()
+            final_progress.mark_completed()
+            await progress_callback(final_progress)
+            bot.logger.info("✅ Successfully sent completion status to Discord for Qwen Image Editing")
+        except Exception as progress_error:
+            bot.logger.warning(f"Failed to send final edit progress: {progress_error}")
+        
+        # Save edited image
+        from image_gen import save_output_image, get_unique_filename
+        filename = get_unique_filename(f"qwen_edited_{interaction.user.id}")
+        save_output_image(edited_data, filename)
+        
+        # Create success embed
+        success_embed = discord.Embed(
+            title="✅ Image Edited Successfully!",
+            description=f"Your image has been edited using **Qwen 2.5 VL**",
+            color=discord.Color.green()
+        )
+        
+        success_embed.add_field(
+            name="Edit Details",
+            value=f"**Edit Prompt:** {prompt[:200]}{'...' if len(prompt) > 200 else ''}\n**Steps:** {steps}\n**CFG:** 1.0",
+            inline=False
+        )
+        
+        success_embed.add_field(
+            name="Original Image",
+            value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+            inline=True
+        )
+        
+        success_embed.add_field(
+            name="Output",
+            value=f"**Model:** Qwen 2.5 VL\n**Speed:** Very Fast\n**Format:** PNG",
+            inline=True
+        )
+        
+        success_embed.set_footer(text=f"Edited by {interaction.user.display_name}")
+        
+        # Create view for the edited image (allows further editing, upscaling, etc.)
+        edited_view = IndividualImageView(
+            bot=bot,
+            image_data=edited_data,
+            generation_info=edit_info,
+            image_index=0  # Standalone edited image
+        )
+        
+        # Send the edited image
+        from io import BytesIO
+        file = discord.File(BytesIO(edited_data), filename=filename)
+        await interaction.followup.send(
+            embed=success_embed,
+            file=file,
+            view=edited_view
+        )
+        
+        bot.logger.info(f"Successfully processed /editqwen command for {interaction.user}")
+        
+    except Exception as e:
+        bot.logger.error(f"Error in editqwen command: {e}")
         try:
             error_embed = discord.Embed(
                 title="❌ Image Editing Failed",
@@ -1222,9 +1398,9 @@ class PostGenerationView(discord.ui.View):
             self.bot.logger.error(f"Upscaling error: {e}")
             await interaction.followup.send("❌ Upscaling failed. Please try again later.", ephemeral=True)
     
-    @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.secondary)
-    async def edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Handle edit button click."""
+    @discord.ui.button(label="✏️ Flux Edit", style=discord.ButtonStyle.secondary)
+    async def flux_edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle Flux edit button click."""
         # Allow any user to use the buttons
         
         # Check rate limiting for the current user (not original user)
@@ -1232,8 +1408,22 @@ class PostGenerationView(discord.ui.View):
             await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
             return
         
-        # Show edit prompt modal
-        modal = PostGenerationEditModal(self, interaction.user)
+        # Show Flux edit prompt modal
+        modal = PostGenerationEditModal(self, interaction.user, workflow_type="flux")
+        await interaction.response.send_modal(modal)
+    
+    @discord.ui.button(label="⚡ Qwen Edit", style=discord.ButtonStyle.secondary)
+    async def qwen_edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle Qwen edit button click."""
+        # Allow any user to use the buttons
+        
+        # Check rate limiting for the current user (not original user)
+        if not self.bot._check_rate_limit(interaction.user.id):
+            await interaction.response.send_message("❌ You're sending requests too quickly. Please wait a moment.", ephemeral=True)
+            return
+        
+        # Show Qwen edit prompt modal
+        modal = PostGenerationEditModal(self, interaction.user, workflow_type="qwen")
         await interaction.response.send_modal(modal)
     
     @discord.ui.button(label="🎬 Animate", style=discord.ButtonStyle.secondary)
@@ -2308,12 +2498,19 @@ class IndividualImageView(discord.ui.View):
         )
         upscale_button.callback = self.upscale_button_callback
         
-        edit_button = discord.ui.Button(
-            label=f"✏️ Edit #{image_index + 1}",
+        flux_edit_button = discord.ui.Button(
+            label=f"✏️ Flux Edit #{image_index + 1}",
             style=discord.ButtonStyle.secondary,
-            custom_id=f"edit_{image_index}"
+            custom_id=f"flux_edit_{image_index}"
         )
-        edit_button.callback = self.edit_button_callback
+        flux_edit_button.callback = self.flux_edit_button_callback
+        
+        qwen_edit_button = discord.ui.Button(
+            label=f"⚡ Qwen Edit #{image_index + 1}",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"qwen_edit_{image_index}"
+        )
+        qwen_edit_button.callback = self.qwen_edit_button_callback
         
         animate_button = discord.ui.Button(
             label=f"🎬 Animate #{image_index + 1}",
@@ -2324,7 +2521,8 @@ class IndividualImageView(discord.ui.View):
         
         # Add the buttons to the view
         self.add_item(upscale_button)
-        self.add_item(edit_button)
+        self.add_item(flux_edit_button)
+        self.add_item(qwen_edit_button)
         self.add_item(animate_button)
     
     async def upscale_button_callback(self, interaction: discord.Interaction):
@@ -2352,8 +2550,8 @@ class IndividualImageView(discord.ui.View):
             except:
                 pass
     
-    async def edit_button_callback(self, interaction: discord.Interaction):
-        """Show edit parameter selection modal."""
+    async def flux_edit_button_callback(self, interaction: discord.Interaction):
+        """Show Flux edit parameter selection modal."""
         try:
             # Check rate limiting
             if not self.bot._check_rate_limit(interaction.user.id):
@@ -2363,15 +2561,40 @@ class IndividualImageView(discord.ui.View):
                 )
                 return
             
-            # Show edit parameter modal
-            modal = EditParameterModal(self)
+            # Show Flux edit parameter modal
+            modal = EditParameterModal(self, workflow_type="flux")
             await interaction.response.send_modal(modal)
             
         except Exception as e:
-            self.bot.logger.error(f"Error showing edit modal: {e}")
+            self.bot.logger.error(f"Error showing Flux edit modal: {e}")
             try:
                 await interaction.response.send_message(
-                    "❌ Error opening edit settings. Please try again.",
+                    "❌ Error opening Flux edit settings. Please try again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+    
+    async def qwen_edit_button_callback(self, interaction: discord.Interaction):
+        """Show Qwen edit parameter selection modal."""
+        try:
+            # Check rate limiting
+            if not self.bot._check_rate_limit(interaction.user.id):
+                await interaction.response.send_message(
+                    "❌ **Rate Limited!** Please wait before making another request.",
+                    ephemeral=True
+                )
+                return
+            
+            # Show Qwen edit parameter modal
+            modal = EditParameterModal(self, workflow_type="qwen")
+            await interaction.response.send_modal(modal)
+            
+        except Exception as e:
+            self.bot.logger.error(f"Error showing Qwen edit modal: {e}")
+            try:
+                await interaction.response.send_message(
+                    "❌ Error opening Qwen edit settings. Please try again.",
                     ephemeral=True
                 )
             except:
@@ -2501,23 +2724,35 @@ class IndividualImageView(discord.ui.View):
             except:
                 pass
 
-    async def _perform_edit(self, interaction: discord.Interaction, edit_prompt: str, steps: int):
+    async def _perform_edit(self, interaction: discord.Interaction, edit_prompt: str, steps: int, workflow_type: str = "flux"):
         """Perform the actual image editing with user-selected parameters."""
         try:
             # Show public status that someone is editing
+            workflow_emoji = "⚡" if workflow_type == "qwen" else "✏️"
+            workflow_name = "Qwen" if workflow_type == "qwen" else "Flux"
             await interaction.response.send_message(
-                f"✏️ **{interaction.user.display_name}** is editing image #{self.image_index + 1}...\n"
+                f"{workflow_emoji} **{interaction.user.display_name}** is editing image #{self.image_index + 1} with {workflow_name}...\n"
                 f"*Edit: {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''} | Steps: {steps}*",
                 ephemeral=False  # Public message
             )
             
             # Create progress callback for editing
-            progress_callback = await self.bot._create_unified_progress_callback(
-                interaction,
-                "Image Editing",
-                edit_prompt,
-                f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
-            )
+            if workflow_type == "qwen":
+                progress_callback = await self.bot._create_unified_progress_callback(
+                    interaction,
+                    "Image Editing",
+                    edit_prompt,
+                    f"Method: Qwen 2.5 VL | Steps: {steps} | CFG: 1.0"
+                )
+                cfg = 1.0
+            else:
+                progress_callback = await self.bot._create_unified_progress_callback(
+                    interaction,
+                    "Image Editing",
+                    edit_prompt,
+                    f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
+                )
+                cfg = 2.5
             
             # Perform editing
             async with self.bot.image_generator as gen:
@@ -2527,7 +2762,8 @@ class IndividualImageView(discord.ui.View):
                     width=1024,
                     height=1024,
                     steps=steps,
-                    cfg=2.5,
+                    cfg=cfg,
+                    workflow_type=workflow_type,
                     progress_callback=progress_callback
                 )
             
@@ -2897,8 +3133,12 @@ class AnimationParameterModal(discord.ui.Modal):
 class EditParameterModal(discord.ui.Modal):
     """Modal for configuring image edit parameters."""
     
-    def __init__(self, image_view):
-        super().__init__(title="✏️ Configure Image Edit")
+    def __init__(self, image_view, workflow_type="flux"):
+        self.workflow_type = workflow_type
+        if workflow_type == "qwen":
+            super().__init__(title="⚡ Configure Qwen Edit")
+        else:
+            super().__init__(title="✏️ Configure Flux Edit")
         self.image_view = image_view
         
         # Edit prompt input (main field)
@@ -2912,15 +3152,25 @@ class EditParameterModal(discord.ui.Modal):
         )
         self.add_item(self.edit_prompt_input)
         
-        # Sampling steps input
-        self.steps_input = discord.ui.TextInput(
-            label="Sampling Steps (10-50)",
-            placeholder="Default: 20",
-            default="20",
-            min_length=1,
-            max_length=2,
-            required=False
-        )
+        # Sampling steps input (different ranges for different workflows)
+        if workflow_type == "qwen":
+            self.steps_input = discord.ui.TextInput(
+                label="Sampling Steps (4-20)",
+                placeholder="Default: 8",
+                default="8",
+                min_length=1,
+                max_length=2,
+                required=False
+            )
+        else:
+            self.steps_input = discord.ui.TextInput(
+                label="Sampling Steps (10-50)",
+                placeholder="Default: 20",
+                default="20",
+                min_length=1,
+                max_length=2,
+                required=False
+            )
         self.add_item(self.steps_input)
     
     async def on_submit(self, interaction: discord.Interaction):
@@ -2935,26 +3185,32 @@ class EditParameterModal(discord.ui.Modal):
                 )
                 return
             
-            # Parse and validate steps
-            steps = 20  # Default
+            # Parse and validate steps based on workflow type
+            if self.workflow_type == "qwen":
+                steps = 8  # Default for Qwen
+                min_steps, max_steps = 4, 20
+            else:
+                steps = 20  # Default for Flux
+                min_steps, max_steps = 10, 50
+            
             if self.steps_input.value.strip():
                 try:
                     steps = int(self.steps_input.value.strip())
-                    if not (10 <= steps <= 50):
+                    if not (min_steps <= steps <= max_steps):
                         await interaction.response.send_message(
-                            "❌ Invalid steps! Must be between 10 and 50",
+                            f"❌ Invalid steps! Must be between {min_steps} and {max_steps}",
                             ephemeral=True
                         )
                         return
                 except ValueError:
                     await interaction.response.send_message(
-                        "❌ Invalid steps! Must be a number between 10 and 50",
+                        f"❌ Invalid steps! Must be a number between {min_steps} and {max_steps}",
                         ephemeral=True
                     )
                     return
             
-            # Start the editing process
-            await self.image_view._perform_edit(interaction, edit_prompt, steps)
+            # Start the editing process with workflow type
+            await self.image_view._perform_edit(interaction, edit_prompt, steps, self.workflow_type)
             
         except Exception as e:
             self.image_view.bot.logger.error(f"Error in edit modal submit: {e}")
@@ -2973,8 +3229,12 @@ class EditParameterModal(discord.ui.Modal):
 class PostGenerationEditModal(discord.ui.Modal):
     """Modal for editing images from PostGenerationView."""
     
-    def __init__(self, post_gen_view, user):
-        super().__init__(title="✏️ Edit Image")
+    def __init__(self, post_gen_view, user, workflow_type="flux"):
+        self.workflow_type = workflow_type
+        if workflow_type == "qwen":
+            super().__init__(title="⚡ Qwen Edit Image")
+        else:
+            super().__init__(title="✏️ Flux Edit Image")
         self.post_gen_view = post_gen_view
         self.user = user
         
@@ -2989,11 +3249,21 @@ class PostGenerationEditModal(discord.ui.Modal):
         )
         self.add_item(self.edit_prompt_input)
         
-        # Sampling steps input
-        self.steps_input = discord.ui.TextInput(
-            label="Sampling Steps (10-50)",
-            placeholder="Default: 20",
-            default="20",
+        # Sampling steps input (different ranges for different workflows)
+        if workflow_type == "qwen":
+            self.steps_input = discord.ui.TextInput(
+                label="Sampling Steps (4-20)",
+                placeholder="Default: 8",
+                default="8",
+                min_length=1,
+                max_length=2,
+                required=False
+            )
+        else:
+            self.steps_input = discord.ui.TextInput(
+                label="Sampling Steps (10-50)",
+                placeholder="Default: 20",
+                default="20",
             min_length=1,
             max_length=2,
             required=False
@@ -3012,35 +3282,53 @@ class PostGenerationEditModal(discord.ui.Modal):
                 )
                 return
             
-            # Parse and validate steps
-            steps = 20  # Default
+            # Parse and validate steps based on workflow type
+            if self.workflow_type == "qwen":
+                steps = 8  # Default for Qwen
+                min_steps, max_steps = 4, 20
+            else:
+                steps = 20  # Default for Flux
+                min_steps, max_steps = 10, 50
+            
             if self.steps_input.value.strip():
                 try:
                     steps = int(self.steps_input.value.strip())
-                    if not (10 <= steps <= 50):
+                    if not (min_steps <= steps <= max_steps):
                         await interaction.response.send_message(
-                            "❌ Invalid steps! Must be between 10 and 50",
+                            f"❌ Invalid steps! Must be between {min_steps} and {max_steps}",
                             ephemeral=True
                         )
                         return
                 except ValueError:
                     await interaction.response.send_message(
-                        "❌ Invalid steps! Must be a number between 10 and 50",
+                        f"❌ Invalid steps! Must be a number between {min_steps} and {max_steps}",
                         ephemeral=True
                     )
                     return
             
             # Start editing process
-            await interaction.response.send_message("✏️ Starting image editing process...", ephemeral=True)
+            workflow_emoji = "⚡" if self.workflow_type == "qwen" else "✏️"
+            workflow_name = "Qwen" if self.workflow_type == "qwen" else "Flux"
+            await interaction.response.send_message(f"{workflow_emoji} Starting {workflow_name} image editing process...", ephemeral=True)
             
             try:
                 # Progress callback for editing
-                progress_callback = await self.post_gen_view.bot._create_unified_progress_callback(
-                    interaction,
-                    "Image Editing",
-                    edit_prompt,
-                    f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
-                )
+                if self.workflow_type == "qwen":
+                    progress_callback = await self.post_gen_view.bot._create_unified_progress_callback(
+                        interaction,
+                        "Image Editing",
+                        edit_prompt,
+                        f"Method: Qwen 2.5 VL | Steps: {steps} | CFG: 1.0"
+                    )
+                    cfg = 1.0
+                else:
+                    progress_callback = await self.post_gen_view.bot._create_unified_progress_callback(
+                        interaction,
+                        "Image Editing",
+                        edit_prompt,
+                        f"Method: Flux Kontext | Steps: {steps} | CFG: 2.5"
+                    )
+                    cfg = 2.5
                 
                 # Generate edited image using ComfyUI
                 async with self.post_gen_view.bot.image_generator as gen:
@@ -3050,7 +3338,8 @@ class PostGenerationEditModal(discord.ui.Modal):
                         width=1024,
                         height=1024,
                         steps=steps,
-                        cfg=2.5,
+                        cfg=cfg,
+                        workflow_type=self.workflow_type,
                         progress_callback=progress_callback
                     )
                 
@@ -3063,7 +3352,7 @@ class PostGenerationEditModal(discord.ui.Modal):
                 
                 edit_embed.add_field(
                     name="Edit Details",
-                    value=f"**Method:** Flux Kontext\n**Edit Prompt:** {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''}\n**Steps:** {steps}",
+                    value=f"**Method:** {workflow_name}\n**Edit Prompt:** {edit_prompt[:100]}{'...' if len(edit_prompt) > 100 else ''}\n**Steps:** {steps}",
                     inline=False
                 )
                 
@@ -3151,7 +3440,8 @@ async def main():
         
         # Add commands to the bot
         bot.tree.add_command(generate_command)
-        bot.tree.add_command(edit_command)
+        bot.tree.add_command(editflux_command)
+        bot.tree.add_command(editqwen_command)
         bot.tree.add_command(help_command)
         bot.tree.add_command(status_command)
         bot.tree.add_command(loras_command)
