@@ -270,6 +270,11 @@ class ImageGenerator:
         self._session_lock = asyncio.Lock()
         self._queue_lock = asyncio.Lock()  # Add queue lock for concurrent request management
         
+        # Persistent client_id for the entire bot session
+        # This allows ONE WebSocket to receive messages for ALL generations
+        self._bot_client_id = str(uuid.uuid4())
+        self.logger.info(f"🤖 Bot session initialized with client_id: {self._bot_client_id}")
+        
     async def __aenter__(self):
         """Async context manager entry."""
         async with self._session_lock:
@@ -445,59 +450,10 @@ class ImageGenerator:
         try:
             # Use queue lock to prevent concurrent queuing conflicts
             async with self._queue_lock:
-                # First, try to connect to WebSocket to get the proper client_id from ComfyUI
-                client_id = None
-                try:
-                    import websockets
-                    ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
-                    self.logger.info(f"🔌 Connecting to WebSocket to get client_id: {ws_url}")
-                    
-                    # Use shorter timeout for client_id retrieval
-                    async with asyncio.wait_for(websockets.connect(ws_url), timeout=5.0) as websocket:
-                        # Wait for the first status message to get the client_id
-                        message_count = 0
-                        while message_count < 10:  # Limit attempts to avoid infinite loop
-                            try:
-                                message = await asyncio.wait_for(websocket.recv(), timeout=3.0)
-                                message_count += 1
-                                
-                                if isinstance(message, str):
-                                    data = json.loads(message)
-                                    self.logger.debug(f"WebSocket message {message_count}: {data}")
-                                    
-                                    # Check for client_id in different possible locations
-                                    if data.get('type') == 'status' and 'sid' in data:
-                                        client_id = data['sid']
-                                        self.logger.info(f"🔑 Received client_id from ComfyUI: {client_id}")
-                                        break
-                                    elif 'client_id' in data:
-                                        client_id = data['client_id']
-                                        self.logger.info(f"🔑 Found client_id in message: {client_id}")
-                                        break
-                                    elif data.get('type') == 'status':
-                                        self.logger.debug(f"Status message without sid: {data}")
-                                        
-                            except asyncio.TimeoutError:
-                                self.logger.debug(f"No message received in 3s (attempt {message_count})")
-                                break
-                            except json.JSONDecodeError as e:
-                                self.logger.warning(f"JSON decode error in WebSocket message: {e}")
-                                continue
-                        
-                        if not client_id:
-                            self.logger.warning(f"⚠️ Could not extract client_id from {message_count} WebSocket messages")
-                        
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"⚠️ WebSocket connection timeout after 5s")
-                except Exception as ws_error:
-                    self.logger.warning(f"⚠️ WebSocket client_id fetch failed: {ws_error}")
-                
-                # Fallback to generating client_id if WebSocket fails
-                if not client_id:
-                    client_id = str(uuid.uuid4())
-                    self.logger.warning(f"⚠️ Using generated client_id as fallback: {client_id}")
-                
-                self.logger.info(f"🔄 Queuing prompt with client_id: {client_id}")
+                # Use persistent bot client_id for ALL generations
+                # This allows ONE WebSocket to receive messages for ALL generations
+                client_id = self._bot_client_id
+                self.logger.info(f"🔄 Queuing prompt with bot session client_id: {client_id[:8]}...")
                 
                 prompt_data = {
                     "prompt": workflow,
@@ -598,9 +554,10 @@ class ImageGenerator:
         try:
             import websockets
             
-            # Use the client_id we got from ComfyUI for WebSocket connection
+            # Use the persistent bot session client_id for WebSocket connection
+            # This allows ONE WebSocket to receive messages for ALL generations
             full_ws_url = f"{ws_url}?clientId={client_id}"
-            self.logger.info(f"📡 Connecting to WebSocket with ComfyUI client_id: {full_ws_url}")
+            self.logger.info(f"📡 Connecting to WebSocket with bot session client_id: {client_id[:8]}...")
             
             async with websockets.connect(full_ws_url) as websocket:
                 self.logger.info(f"📡 WebSocket connected for node tracking prompt {prompt_id}")
@@ -617,14 +574,19 @@ class ImageGenerator:
                             # Log ALL WebSocket messages for debugging
                             self.logger.info(f"📡 WebSocket message: type={message_type}, data={message_data}")
                             
-                            # Handle progress messages (K-Sampler steps) - NO prompt_id filter needed for progress
+                            # Handle progress messages (K-Sampler steps)
+                            # MUST filter by prompt_id since we use shared client_id
                             if message_type == 'progress':
-                                current_step = message_data.get('value', 0)
-                                max_steps = message_data.get('max', 0)
-                                progress_data['step_current'] = current_step
-                                progress_data['step_total'] = max_steps
-                                progress_data['last_websocket_update'] = time.time()
-                                self.logger.info(f"📈 Step progress: {current_step}/{max_steps}")
+                                msg_prompt_id = message_data.get('prompt_id')
+                                if msg_prompt_id == prompt_id:
+                                    current_step = message_data.get('value', 0)
+                                    max_steps = message_data.get('max', 0)
+                                    progress_data['step_current'] = current_step
+                                    progress_data['step_total'] = max_steps
+                                    progress_data['last_websocket_update'] = time.time()
+                                    self.logger.info(f"📈 Step progress for {prompt_id[:8]}...: {current_step}/{max_steps}")
+                                else:
+                                    self.logger.debug(f"📈 Ignoring progress for different prompt: {msg_prompt_id[:8] if msg_prompt_id else 'None'}...")
                             
                             # Handle execution cached (nodes skipped due to caching)
                             elif message_type == 'execution_cached':
