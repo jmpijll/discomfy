@@ -1333,10 +1333,11 @@ class ImageGenerator:
         steps: int = 20,
         cfg: float = 2.5,
         seed: Optional[int] = None,
-        progress_callback=None
+        progress_callback=None,
+        workflow_type: str = "flux"
     ) -> Tuple[bytes, Dict[str, Any]]:
         """
-        Edit an image using ComfyUI edit workflow with Flux Kontext.
+        Edit an image using ComfyUI edit workflow (Flux Kontext or Qwen).
         
         Args:
             input_image_data: Image data as bytes
@@ -1344,9 +1345,10 @@ class ImageGenerator:
             width: Output image width (default: 1024)
             height: Output image height (default: 1024)
             steps: Number of sampling steps (default: 20)
-            cfg: CFG scale (default: 2.5)
+            cfg: CFG scale (default: 2.5 for Flux, 1 for Qwen)
             seed: Random seed (auto-generated if None)
             progress_callback: Optional callback for progress updates
+            workflow_type: Type of edit workflow to use: "flux" or "qwen" (default: "flux")
         
         Returns:
             Tuple of (edited_image_data, edit_info)
@@ -1366,16 +1368,25 @@ class ImageGenerator:
             upload_filename = f"edit_input_{int(time.time())}.png"
             uploaded_filename = await self.upload_image(input_image_data, upload_filename)
             
-            # Use edit workflow
-            workflow_name = "flux_kontext_edit"
-            
-            self.logger.info(f"Starting image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
+            # Select workflow based on type
+            if workflow_type.lower() == "qwen":
+                workflow_name = "qwen_image_edit"
+                self.logger.info(f"Starting Qwen image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
+            else:
+                workflow_name = "flux_kontext_edit"
+                self.logger.info(f"Starting Flux image editing: {uploaded_filename} with prompt: '{edit_prompt[:50]}...'")
             
             # Load and update workflow
             workflow = self._load_workflow(workflow_name)
-            updated_workflow = self._update_edit_workflow_parameters(
-                workflow, uploaded_filename, edit_prompt, width, height, steps, cfg, seed
-            )
+            
+            if workflow_type.lower() == "qwen":
+                updated_workflow = self._update_qwen_edit_workflow_parameters(
+                    workflow, uploaded_filename, edit_prompt, steps, cfg, seed
+                )
+            else:
+                updated_workflow = self._update_edit_workflow_parameters(
+                    workflow, uploaded_filename, edit_prompt, width, height, steps, cfg, seed
+                )
             
             # Queue prompt
             prompt_id, client_id = await self._queue_prompt(updated_workflow)
@@ -1398,11 +1409,12 @@ class ImageGenerator:
                 'cfg': cfg,
                 'seed': seed,
                 'workflow': workflow_name,
+                'workflow_type': workflow_type,
                 'timestamp': time.time(),
                 'type': 'edit'
             }
             
-            self.logger.info(f"Image editing completed successfully")
+            self.logger.info(f"Image editing completed successfully using {workflow_type}")
             return edited_image_data, edit_info
             
         except Exception as e:
@@ -1472,6 +1484,56 @@ class ImageGenerator:
         except Exception as e:
             self.logger.error(f"Failed to update edit workflow parameters: {e}")
             raise ComfyUIAPIError(f"Failed to update edit workflow parameters: {e}")
+    
+    def _update_qwen_edit_workflow_parameters(
+        self,
+        workflow: Dict[str, Any],
+        input_image_path: str,
+        edit_prompt: str,
+        steps: int = 8,
+        cfg: float = 1,
+        seed: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Update Qwen edit workflow parameters."""
+        try:
+            # Create a copy to avoid modifying the original
+            updated_workflow = json.loads(json.dumps(workflow))
+            
+            # Generate random seed if not provided
+            if seed is None:
+                import random
+                seed = random.randint(0, 2**32 - 1)
+            
+            # Update workflow parameters based on the qwen_image_edit.json structure
+            for node_id, node_data in updated_workflow.items():
+                class_type = node_data.get('class_type')
+                
+                if class_type == 'LoadImage':
+                    # Update input image (node 78)
+                    node_data['inputs']['image'] = input_image_path
+                
+                elif class_type == 'TextEncodeQwenImageEditPlus':
+                    # Update edit prompt (node 111 - positive prompt)
+                    title = node_data.get('_meta', {}).get('title', '')
+                    prompt_value = node_data['inputs'].get('prompt', '')
+                    
+                    # Node 111 has the actual prompt, node 110 is empty/negative
+                    if prompt_value and prompt_value.strip() and prompt_value != "":
+                        # This is the positive prompt node
+                        node_data['inputs']['prompt'] = edit_prompt
+                
+                elif class_type == 'KSampler':
+                    # Update sampling parameters (node 3)
+                    node_data['inputs']['seed'] = seed
+                    node_data['inputs']['steps'] = steps
+                    node_data['inputs']['cfg'] = cfg
+            
+            self.logger.debug(f"Updated Qwen edit workflow parameters: prompt='{edit_prompt[:50]}...', steps={steps}")
+            return updated_workflow
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update Qwen edit workflow parameters: {e}")
+            raise ComfyUIAPIError(f"Failed to update Qwen edit workflow parameters: {e}")
     
     async def upload_image(self, image_data: bytes, filename: str) -> str:
         """Upload image data to ComfyUI input directory."""
