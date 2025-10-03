@@ -547,19 +547,23 @@ async def editflux_command(
         except:
             pass
 
-@app_commands.command(name="editqwen", description="Edit an image using Qwen AI with natural language prompts")
+@app_commands.command(name="editqwen", description="Edit images using Qwen AI with natural language prompts (1-3 images)")
 @app_commands.describe(
-    image="Upload the image you want to edit",
+    image="Upload the primary image you want to edit (required)",
     prompt="Describe what you want to change in the image",
+    image2="Upload a second image for multi-image editing (optional)",
+    image3="Upload a third image for multi-image editing (optional)",
     steps="Number of sampling steps (4-20, default: 8)"
 )
 async def editqwen_command(
     interaction: discord.Interaction,
     image: discord.Attachment,
     prompt: str,
+    image2: Optional[discord.Attachment] = None,
+    image3: Optional[discord.Attachment] = None,
     steps: Optional[int] = 8
 ):
-    """Edit an uploaded image using Qwen Image Edit with natural language prompts."""
+    """Edit one or more uploaded images using Qwen Image Edit with natural language prompts."""
     bot: ComfyUIBot = interaction.client
     try:
         # Check rate limiting first
@@ -567,7 +571,7 @@ async def editqwen_command(
             await interaction.response.send_message("❌ You're making requests too quickly. Please wait a moment.", ephemeral=True)
             return
         
-        # Validate image
+        # Validate primary image
         if not image.content_type or not image.content_type.startswith('image/'):
             await interaction.response.send_message("❌ Please upload a valid image file.", ephemeral=True)
             return
@@ -575,6 +579,29 @@ async def editqwen_command(
         if image.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
             await interaction.response.send_message(f"❌ Image too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
             return
+        
+        # Validate additional images if provided
+        additional_images = []
+        if image2:
+            if not image2.content_type or not image2.content_type.startswith('image/'):
+                await interaction.response.send_message("❌ Image 2 must be a valid image file.", ephemeral=True)
+                return
+            if image2.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
+                await interaction.response.send_message(f"❌ Image 2 too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
+                return
+            additional_images.append(image2)
+        
+        if image3:
+            if not image2:
+                await interaction.response.send_message("❌ Cannot provide image3 without image2!", ephemeral=True)
+                return
+            if not image3.content_type or not image3.content_type.startswith('image/'):
+                await interaction.response.send_message("❌ Image 3 must be a valid image file.", ephemeral=True)
+                return
+            if image3.size > bot.config.discord.max_file_size_mb * 1024 * 1024:
+                await interaction.response.send_message(f"❌ Image 3 too large! Maximum {bot.config.discord.max_file_size_mb}MB.", ephemeral=True)
+                return
+            additional_images.append(image3)
         
         # Validate prompt
         if not prompt.strip():
@@ -596,17 +623,29 @@ async def editqwen_command(
         
         # Download image data
         image_data = await image.read()
+        additional_image_data = []
+        for img in additional_images:
+            data = await img.read()
+            additional_image_data.append(data)
+        
+        total_images = 1 + len(additional_images)
         
         # Send initial response
         initial_embed = discord.Embed(
-            title="✏️ Starting Image Edit - Qwen",
+            title=f"✏️ Starting Multi-Image Edit - Qwen ({total_images} images)",
             description=f"**Edit Prompt:** {prompt[:150]}{'...' if len(prompt) > 150 else ''}",
             color=discord.Color.purple()
         )
         
+        input_info = f"**Primary:** {image.filename} ({image.size / 1024:.1f} KB)"
+        if image2:
+            input_info += f"\n**Image 2:** {image2.filename} ({image2.size / 1024:.1f} KB)"
+        if image3:
+            input_info += f"\n**Image 3:** {image3.filename} ({image3.size / 1024:.1f} KB)"
+        
         initial_embed.add_field(
-            name="Input Image",
-            value=f"**File:** {image.filename}\n**Size:** {image.size / 1024:.1f} KB",
+            name="Input Images",
+            value=input_info,
             inline=True
         )
         
@@ -618,7 +657,7 @@ async def editqwen_command(
         
         initial_embed.add_field(
             name="Processing",
-            value="🔄 Uploading image and starting edit...\n⏱️ Estimated time: 30-60 seconds",
+            value=f"🔄 Uploading {total_images} image(s) and starting edit...\n⏱️ Estimated time: 30-60 seconds",
             inline=False
         )
         
@@ -629,7 +668,7 @@ async def editqwen_command(
             interaction,
             "Image Editing",
             prompt,
-            f"Method: Qwen 2.5 VL | Steps: {steps} | CFG: 1.0"
+            f"Method: Qwen 2.5 VL ({total_images} images) | Steps: {steps} | CFG: 1.0"
         )
         
         # Perform the edit using Qwen workflow
@@ -642,7 +681,8 @@ async def editqwen_command(
                 steps=steps,
                 cfg=1.0,
                 workflow_type="qwen",
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                additional_images=additional_image_data if additional_image_data else None
             )
         
         # Send final completion status

@@ -1,10 +1,10 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 1.2.11** | Advanced AI Image & Video Generation for Discord
+**Version 1.3.0** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.2.11  
+**🚀 Current Version**: v1.3.0  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
 
@@ -56,6 +56,7 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 - **Natural Language Editing**: Describe changes in plain English
 - **Flux Kontext**: High-quality editing with 10-50 steps (slower, more detailed)
 - **Qwen 2.5 VL**: Ultra-fast editing with 4-20 steps (faster, efficient)
+- **Multi-Image Qwen Editing**: NEW in v1.3.0 - Edit with 1, 2, or 3 input images
 - **Direct Upload Support**: Edit any image with `/editflux` or `/editqwen` commands
 - **Post-Generation Editing**: Both edit buttons available on all generated images
 - **Customizable Parameters**: Adjust sampling steps for quality control
@@ -219,6 +220,18 @@ python bot.py
 /editqwen image:photo.jpg prompt:add sunglasses and a hat steps:8
 ```
 
+### **Multi-Image Qwen Editing (NEW in v1.3.0):**
+```
+# Single image (default)
+/editqwen image:photo.jpg prompt:enhance the lighting steps:8
+
+# Two images
+/editqwen image:photo1.jpg image2:photo2.jpg prompt:combine both styles steps:8
+
+# Three images
+/editqwen image:photo1.jpg image2:photo2.jpg image3:photo3.jpg prompt:merge all three steps:8
+```
+
 ### **Advanced Parameters:**
 ```
 /generate prompt:cyberpunk cityscape at night width:1024 height:768 steps:30 cfg:7.5 batch_size:2
@@ -310,7 +323,9 @@ discomfy/
 │   ├── flux_lora.json
 │   ├── flux_krea_lora.json    # Enhanced Flux Krea model
 │   ├── flux_kontext_edit.json # Flux Kontext editing
-│   ├── qwen_image_edit.json   # NEW: Qwen 2.5 VL fast editing
+│   ├── qwen_image_edit.json   # Qwen 2.5 VL fast editing (1 image)
+│   ├── qwen_image_edit_2.json # Qwen 2.5 VL multi-image (2 images)
+│   ├── qwen_image_edit_3.json # Qwen 2.5 VL multi-image (3 images)
 │   ├── hidream_lora.json
 │   ├── upscale_config-1.json
 │   └── video_wan_vace_14B_i2v.json
@@ -397,4 +412,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v1.2.10 - The Professional Discord ComfyUI Bot*
+*DisComfy v1.3.0 - The Professional Discord ComfyUI Bot*
