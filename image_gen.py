@@ -701,17 +701,19 @@ class ImageGenerator:
             last_progress_sent = 0.0
             progress_update_count = 0
             
-            # Try to establish WebSocket for node-level tracking (optional)
+            # Try to establish WebSocket for node-level tracking (optional and best-effort)
+            # NOTE: WebSocket may not receive messages for queued generations due to client_id filtering
+            # HTTP polling is the primary mechanism for progress tracking
             websocket_task = None
             websocket_progress = {}
             
             try:
                 import websockets
                 ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
-                self.logger.info(f"📡 Starting WebSocket tracking with client_id: {client_id}")
+                self.logger.info(f"📡 Starting WebSocket tracking for prompt {prompt_id} (best-effort)")
                 websocket_task = asyncio.create_task(self._track_websocket_progress(ws_url, prompt_id, client_id, websocket_progress))
             except Exception as ws_error:
-                self.logger.warning(f"WebSocket unavailable for node tracking: {ws_error}")
+                self.logger.info(f"WebSocket unavailable, using HTTP polling only: {ws_error}")
             
             self.logger.info(f"Starting enhanced polling for prompt {prompt_id} (timeout: {max_wait_time}s, interval: 1s)")
             
@@ -794,7 +796,9 @@ class ImageGenerator:
                                         
                                         # Use WebSocket node data if available and recent
                                         websocket_data_age = current_time - websocket_progress.get('last_websocket_update', 0)
-                                        if websocket_progress and websocket_data_age < 10.0:  # Use WebSocket data if less than 10 seconds old
+                                        websocket_has_progress = 'step_current' in websocket_progress and 'step_total' in websocket_progress
+                                        
+                                        if websocket_progress and websocket_data_age < 10.0 and websocket_has_progress:
                                             # Apply WebSocket node tracking data
                                             old_percentage = progress.percentage
                                             
@@ -804,34 +808,63 @@ class ImageGenerator:
                                             if 'cached_nodes' in websocket_progress:
                                                 progress.update_cached_nodes(websocket_progress['cached_nodes'])
                                                 
-                                            if 'step_current' in websocket_progress and 'step_total' in websocket_progress:
-                                                progress.update_step_progress(
-                                                    websocket_progress['step_current'], 
-                                                    websocket_progress['step_total']
-                                                )
+                                            progress.update_step_progress(
+                                                websocket_progress['step_current'], 
+                                                websocket_progress['step_total']
+                                            )
                                                 
                                             self.logger.info(f"📊 Applied WebSocket data: node={websocket_progress.get('current_node')}, steps={websocket_progress.get('step_current')}/{websocket_progress.get('step_total')}, progress: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
                                         else:
-                                            # Fallback to time-based estimation if no WebSocket data or data is stale
+                                            # IMPROVED: Use HTTP polling to get actual progress when WebSocket unavailable
+                                            # This is crucial for queued generations that don't receive WebSocket messages
                                             elapsed = current_time - progress.start_time
-                                            if elapsed > 10:  # After 10 seconds, start showing progress
-                                                # Rough estimate based on generation type
-                                                if "video" in str(progress._workflow_data).lower():
-                                                    estimated_total = 180  # 3 minutes average for video
-                                                else:
-                                                    estimated_total = 45   # 45 seconds average for image
+                                            if elapsed > 5:  # After 5 seconds, try to get actual progress
+                                                # Fetch status from ComfyUI to get actual progress if available
+                                                try:
+                                                    # Try to get progress from the queue's running item
+                                                    for item in queue_running:
+                                                        try:
+                                                            if isinstance(item, list) and len(item) >= 2:
+                                                                item_data = item[1] if isinstance(item[1], dict) else {}
+                                                                if item_data.get('prompt_id') == prompt_id:
+                                                                    # Found our running prompt - check if it has progress info
+                                                                    # Some ComfyUI versions include progress in queue data
+                                                                    if len(item) >= 3 and isinstance(item[2], dict):
+                                                                        exec_info = item[2]
+                                                                        if 'progress' in exec_info:
+                                                                            prog_info = exec_info['progress']
+                                                                            if 'value' in prog_info and 'max' in prog_info:
+                                                                                current_step = prog_info['value']
+                                                                                total_steps = prog_info['max']
+                                                                                if total_steps > 0:
+                                                                                    old_percentage = progress.percentage
+                                                                                    progress.update_step_progress(current_step, total_steps)
+                                                                                    self.logger.info(f"📊 HTTP polling progress: steps={current_step}/{total_steps}, progress: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
+                                                                                    break
+                                                        except Exception:
+                                                            continue
+                                                except Exception as e:
+                                                    self.logger.debug(f"Could not extract progress from queue: {e}")
                                                 
-                                                estimated_progress = min(85, (elapsed / estimated_total) * 100)
-                                                if estimated_progress > progress.percentage:
-                                                    old_percentage = progress.percentage
-                                                    progress.percentage = estimated_progress
-                                                    if progress.percentage < 30:
-                                                        progress.phase = "Processing prompt"
-                                                    elif progress.percentage < 60:
-                                                        progress.phase = "Generating image"
+                                                # If we still don't have progress, use time-based fallback
+                                                if progress.percentage == 0 or not progress._first_step_reached:
+                                                    # Rough estimate based on generation type
+                                                    if "video" in str(progress._workflow_data).lower():
+                                                        estimated_total = 180  # 3 minutes average for video
                                                     else:
-                                                        progress.phase = "Refining details"
-                                                    self.logger.info(f"📊 Time-based estimate: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
+                                                        estimated_total = 45   # 45 seconds average for image
+                                                    
+                                                    estimated_progress = min(85, (elapsed / estimated_total) * 100)
+                                                    if estimated_progress > progress.percentage:
+                                                        old_percentage = progress.percentage
+                                                        progress.percentage = estimated_progress
+                                                        if progress.percentage < 30:
+                                                            progress.phase = "Processing prompt"
+                                                        elif progress.percentage < 60:
+                                                            progress.phase = "Generating image"
+                                                        else:
+                                                            progress.phase = "Refining details"
+                                                        self.logger.info(f"📊 Time-based estimate: {old_percentage:.1f}% -> {progress.percentage:.1f}%")
                                     else:
                                         # Not in queue and not running - check if we have WebSocket activity
                                         if not execution_started and websocket_progress and 'step_current' in websocket_progress:
