@@ -607,3 +607,4 @@ This allows ONE WebSocket to receive messages for ALL generations.
 **Author**: AI Assistant (Research & Implementation)  
 **Tested By**: User (Production ComfyUI Instance)
 
+
