@@ -1,35 +1,44 @@
 # Changelog
 
-## [1.2.9] - 2025-10-03
+## [1.2.10] - 2025-10-03
 
-### 🐛 Concurrent Generation Progress Tracking Fix
+### 🐛 Critical Queue Handling Fix
 
 ### Fixed
-- **HTTP Polling Progress**: Improved HTTP polling to extract actual progress data from ComfyUI's queue endpoint
-- **WebSocket Fallback**: Enhanced fallback logic when WebSocket doesn't receive messages (due to client_id filtering)
-- **Queued Generation Progress**: Queued generations now show progress via HTTP polling when WebSocket is unavailable
-- **Completion Detection**: Improved history endpoint checking to detect completed generations more reliably
+- **Queued Generation Progress**: Fixed critical bug where generations started while another is running would never show progress percentages
+- **WebSocket Client Filtering**: Removed `?clientId` parameter from WebSocket connections that was preventing queued generations from receiving progress messages
+- **Completion Detection**: Fixed issue where completed generations weren't detected until a new generation started
+- **Progress Message Filtering**: Implemented proper prompt-based filtering to prevent cross-contamination between concurrent generations
+- **Concurrent Request Handling**: Multiple users can now safely queue generations simultaneously with accurate progress tracking
 
 ### Technical Details
-- Enhanced HTTP polling to check for progress data in `queue_running` items (line 820-845)
-- Added `websocket_has_progress` check to verify WebSocket has actual step data before applying
-- WebSocket now marked as "best-effort" with HTTP polling as primary tracking mechanism
-- Improved time-based fallback to only activate when no actual progress data is available
-- Added more robust progress extraction from ComfyUI queue data structure
+- Removed `?clientId={client_id}` from WebSocket connection URL (line 602) - was causing ComfyUI to filter messages per client
+- WebSocket now connects without client filtering to receive ALL messages from ComfyUI
+- Added `currently_executing_prompt` tracking in `_track_websocket_progress()` to identify which prompt is actually running
+- Progress messages filtered by matching against currently executing prompt_id
+- Each generation's WebSocket properly receives 'executing' messages to detect when its prompt starts running
+- Enhanced logging to track prompt execution state transitions
 
 ### Root Cause
-ComfyUI's WebSocket with `?clientId={client_id}` parameter filters messages per client. When Generation B is queued while A is running:
-1. Generation B's WebSocket connects with its own client_id
-2. ComfyUI filters progress messages, so B's WebSocket receives nothing
-3. Original code fell back to time-based estimation immediately
-4. New code: HTTP polling now attempts to extract actual progress from queue data
-5. If that fails, falls back to time-based estimation as last resort
+The issue was caused by the WebSocket connecting with `?clientId={client_id}` parameter, which made ComfyUI filter messages to only that specific client. When Generation B was queued while Generation A was running:
+1. Generation B's WebSocket connected with its own client_id
+2. ComfyUI filtered messages, so Generation B's WebSocket didn't receive ANY messages
+3. When Generation B started executing, its WebSocket never received the 'executing' or 'progress' messages
+4. Result: Generation B showed elapsed time but no progress percentage
+5. HTTP polling eventually detected completion in history, but only when triggered by a new generation
 
 ### Impact
-- Queued generations can now show progress even when WebSocket filtering prevents message reception
-- HTTP polling provides actual step counts when available from ComfyUI's queue endpoint
-- More reliable completion detection through history endpoint
-- Better fallback chain: WebSocket → HTTP polling progress → Time-based estimation
+This fix resolves the core issue with concurrent generation handling. Users can now:
+- Queue multiple generations that show accurate progress when running
+- See "Queued" status with position while waiting
+- See progress percentages and step counts when generation actually starts
+- Have all generations complete properly without needing to start another generation to trigger completion detection
+
+## [1.2.9] - 2025-10-03
+
+### 🐛 Concurrent Generation Progress Tracking Fix (Remote Release)
+
+Note: This version exists in the remote repository with a different implementation approach.
 
 ## [1.2.8] - 2025-10-03
 
