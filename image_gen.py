@@ -425,12 +425,90 @@ class ImageGenerator:
             with open(workflow_path, 'r', encoding='utf-8') as f:
                 workflow = json.load(f)
             
+            # Validate workflow structure
+            self._validate_workflow(workflow, workflow_name)
+            
             self.logger.debug(f"Loaded workflow: {workflow_name}")
             return workflow
             
         except Exception as e:
             self.logger.error(f"Failed to load workflow {workflow_name}: {e}")
             raise ComfyUIAPIError(f"Failed to load workflow: {e}")
+    
+    def _validate_workflow(self, workflow: Dict[str, Any], workflow_name: str) -> None:
+        """Validate workflow structure to ensure compatibility with ComfyUI.
+        
+        Args:
+            workflow: The workflow dictionary to validate
+            workflow_name: Name of the workflow (for error messages)
+            
+        Raises:
+            ComfyUIAPIError: If workflow structure is invalid
+        """
+        try:
+            if not isinstance(workflow, dict):
+                raise ComfyUIAPIError(
+                    f"Workflow '{workflow_name}' has invalid structure. "
+                    f"Expected a dictionary of nodes, got {type(workflow).__name__}."
+                )
+            
+            if not workflow:
+                raise ComfyUIAPIError(
+                    f"Workflow '{workflow_name}' is empty. "
+                    f"Please ensure the workflow file contains valid ComfyUI nodes."
+                )
+            
+            # Check each node for required properties
+            invalid_nodes = []
+            for node_id, node_data in workflow.items():
+                if not isinstance(node_data, dict):
+                    invalid_nodes.append({
+                        'id': node_id,
+                        'issue': f"Node is not a dictionary (got {type(node_data).__name__})"
+                    })
+                    continue
+                
+                # Check for class_type property
+                if 'class_type' not in node_data:
+                    invalid_nodes.append({
+                        'id': node_id,
+                        'issue': "Missing required 'class_type' property"
+                    })
+                    continue
+                
+                # Check for inputs property
+                if 'inputs' not in node_data:
+                    self.logger.warning(
+                        f"Node {node_id} in workflow '{workflow_name}' is missing 'inputs' property. "
+                        f"This may cause issues during execution."
+                    )
+            
+            if invalid_nodes:
+                error_details = "\n".join([
+                    f"  - Node #{node['id']}: {node['issue']}"
+                    for node in invalid_nodes[:5]  # Show first 5 errors
+                ])
+                
+                if len(invalid_nodes) > 5:
+                    error_details += f"\n  ... and {len(invalid_nodes) - 5} more issues"
+                
+                raise ComfyUIAPIError(
+                    f"Workflow '{workflow_name}' has {len(invalid_nodes)} invalid node(s):\n{error_details}\n\n"
+                    f"Common issues:\n"
+                    f"  1. Each node must have a 'class_type' property specifying the ComfyUI node type\n"
+                    f"  2. Each node must have an 'inputs' property (can be empty dict)\n"
+                    f"  3. Workflow must be exported from ComfyUI as API format (not the UI format)\n\n"
+                    f"To fix: In ComfyUI, use 'Save (API Format)' instead of regular 'Save' when exporting workflows."
+                )
+            
+            self.logger.debug(f"Workflow '{workflow_name}' validation passed: {len(workflow)} nodes")
+            
+        except ComfyUIAPIError:
+            # Re-raise our custom errors
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error during workflow validation: {e}")
+            raise ComfyUIAPIError(f"Failed to validate workflow: {e}")
     
     def _update_workflow_parameters(
         self,
