@@ -820,7 +820,8 @@ class CompleteSetupView(discord.ui.View):
                 # Add LoRA selector if LoRAs are available
                 if self.loras:
                     # Insert LoRA selector after ModelSelectMenu (index 1)
-                    self.insert_item(1, LoRASelectMenu(self.loras, self.selected_lora))
+                    # Use children.insert() instead of insert_item() which doesn't exist
+                    self.children.insert(1, LoRASelectMenu(self.loras, self.selected_lora))
                     
             except Exception as e:
                 self.bot.logger.error(f"Failed to load default LoRAs: {e}")

@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.3.1] - 2025-10-05
+
+### 🐛 Critical Bug Fixes for Custom Workflows
+
+### Fixed
+- **LoRA Selector Error**: Fixed `'CompleteSetupView' object has no attribute 'insert_item'` error
+  - Changed from non-existent `insert_item()` to correct `children.insert()` method
+  - LoRA selector now initializes properly without errors
+  - Credit to [@AyoKeito](https://github.com/AyoKeito) for identifying the issue
+
+- **Custom Workflow Validation**: Fixed `"Cannot execute because a node is missing the class_type property"` error
+  - Added comprehensive `_validate_workflow()` method to check workflow structure
+  - Validates all nodes have required `class_type` property
+  - Checks for proper workflow dictionary structure
+  - Warns about missing `inputs` properties
+
+### Added
+- **Intelligent Error Messages**: New validation provides detailed, actionable error messages
+  - Lists specific nodes with issues (up to 5)
+  - Explains what's wrong with each node
+  - Provides common solutions and export format guidance
+  - Tells users to use "Save (API Format)" in ComfyUI
+  - Includes example of correct node structure
+
+### Technical Details
+- `bot.py` (Line 823): Fixed LoRA selector initialization method
+- `image_gen.py` (Lines 438-511): Added `_validate_workflow()` method
+- `image_gen.py` (Line 429): Updated `_load_workflow()` to call validation
+- Validation runs before sending workflow to ComfyUI, catching errors early
+
+### Impact
+- ✅ Custom workflows now provide clear guidance when structure is invalid
+- ✅ Users can debug workflow issues without trial-and-error
+- ✅ LoRA selector works reliably for all model types
+- ✅ Better developer experience for custom workflow creation
+
 ## [1.3.0] - 2025-10-04
 
 ### ✨ New Feature: Multi-Image Qwen Editing
