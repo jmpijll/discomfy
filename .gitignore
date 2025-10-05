@@ -70,3 +70,7 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/ 
+# Wiki documentation (maintained separately in wiki repo)
+wiki-docs/
+publish-wiki.ps1
+WIKI_SETUP.md
