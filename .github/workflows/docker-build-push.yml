@@ -37,6 +37,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
+        if: github.event_name == 'release'
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -51,11 +52,21 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
-${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           echo "tags<<EOF" >> $GITHUB_OUTPUT
-          echo "$TAGS" >> $GITHUB_OUTPUT
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_OUTPUT
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set final tags
+        id: final-tags
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            echo "tags=${{ steps.meta.outputs.tags }}" >> $GITHUB_OUTPUT
+            echo "labels=${{ steps.meta.outputs.labels }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tags=${{ steps.tags.outputs.tags }}" >> $GITHUB_OUTPUT
+            echo "labels=" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build and push Docker image
         id: build
@@ -63,8 +74,8 @@ ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
         with:
           context: .
           push: true
-          tags: ${{ github.event_name == 'workflow_dispatch' && steps.tags.outputs.tags || steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.final-tags.outputs.tags }}
+          labels: ${{ steps.final-tags.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
