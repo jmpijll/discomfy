@@ -212,16 +212,26 @@ python bot.py
 
 ## 🐳 Docker Quick Start
 
-DisComfy is available as a pre-built Docker container from GitHub Container Registry (ghcr.io).
+DisComfy is available as a pre-built Docker container from both GitHub Container Registry (ghcr.io) and Docker Hub.
 
 ### **Using the Pre-built Image:**
 
+**From GitHub Container Registry:**
 ```bash
 # Pull the latest image
 docker pull ghcr.io/jmpijll/discomfy:latest
 
 # Or pull a specific version
 docker pull ghcr.io/jmpijll/discomfy:v1.4.0
+```
+
+**From Docker Hub:**
+```bash
+# Pull the latest image
+docker pull <your-dockerhub-username>/discomfy:latest
+
+# Or pull a specific version
+docker pull <your-dockerhub-username>/discomfy:v1.4.0
 ```
 
 ### **Running with Docker:**
@@ -247,7 +257,10 @@ version: '3.8'
 
 services:
   discomfy:
-    image: ghcr.io/jmpijll/discomfy:latest
+    # Use either:
+    # image: ghcr.io/jmpijll/discomfy:latest
+    # or:
+    image: <your-dockerhub-username>/discomfy:latest
     container_name: discomfy
     restart: unless-stopped
     volumes:
