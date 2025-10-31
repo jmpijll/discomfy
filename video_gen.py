@@ -21,6 +21,16 @@ class VideoGenerator(ImageGenerator):
         super().__init__()
         self.logger = logging.getLogger(__name__)
     
+    async def initialize(self):
+        """Initialize the video generator (inherits from ImageGenerator)."""
+        await super().initialize()
+        self.logger.info("🎬 VideoGenerator initialized")
+    
+    async def shutdown(self):
+        """Shutdown the video generator (inherits from ImageGenerator)."""
+        await super().shutdown()
+        self.logger.info("🎬 VideoGenerator shutdown complete")
+    
     def _update_video_workflow_parameters(
         self,
         workflow: Dict[str, Any],

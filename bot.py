@@ -77,14 +77,15 @@ class ComfyUIBot(commands.Bot):
             
             # Initialize image generator
             self.image_generator = ImageGenerator()
+            await self.image_generator.initialize()
             
             # Initialize video generator
             self.video_generator = VideoGenerator()
+            await self.video_generator.initialize()
             
-            # Test ComfyUI connection
-            async with self.image_generator as gen:
-                if not await gen.test_connection():
-                    self.logger.warning("ComfyUI connection test failed - bot will still start")
+            # Test ComfyUI connection (no context manager needed)
+            if not await self.image_generator.test_connection():
+                self.logger.warning("ComfyUI connection test failed - bot will still start")
             
             # Sync slash commands
             if self.config.discord.guild_id:
@@ -121,6 +122,22 @@ class ComfyUIBot(commands.Bot):
     async def on_error(self, event: str, *args, **kwargs) -> None:
         """Handle bot errors."""
         self.logger.error(f"Bot error in event {event}: {traceback.format_exc()}")
+    
+    async def close(self) -> None:
+        """Clean shutdown of the bot."""
+        self.logger.info("🛑 Bot shutdown initiated...")
+        
+        # Shutdown generators
+        if self.image_generator:
+            await self.image_generator.shutdown()
+        
+        if self.video_generator:
+            await self.video_generator.shutdown()
+        
+        # Call parent close
+        await super().close()
+        
+        self.logger.info("✅ Bot shutdown complete")
     
     def _check_rate_limit(self, user_id: int) -> bool:
         """Check if user is rate limited."""
@@ -458,17 +475,16 @@ async def editflux_command(
         )
         
         # Perform the edit using Flux workflow
-        async with bot.image_generator as gen:
-            edited_data, edit_info = await gen.generate_edit(
-                input_image_data=image_data,
-                edit_prompt=prompt,
-                width=1024,
-                height=1024,
-                steps=steps,
-                cfg=2.5,
-                workflow_type="flux",
-                progress_callback=progress_callback
-            )
+        edited_data, edit_info = await bot.image_generator.generate_edit(
+            input_image_data=image_data,
+            edit_prompt=prompt,
+            width=1024,
+            height=1024,
+            steps=steps,
+            cfg=2.5,
+            workflow_type="flux",
+            progress_callback=progress_callback
+        )
         
         # Send final completion status
         try:
@@ -672,18 +688,17 @@ async def editqwen_command(
         )
         
         # Perform the edit using Qwen workflow
-        async with bot.image_generator as gen:
-            edited_data, edit_info = await gen.generate_edit(
-                input_image_data=image_data,
-                edit_prompt=prompt,
-                width=1024,
-                height=1024,
-                steps=steps,
-                cfg=1.0,
-                workflow_type="qwen",
-                progress_callback=progress_callback,
-                additional_images=additional_image_data if additional_image_data else None
-            )
+        edited_data, edit_info = await bot.image_generator.generate_edit(
+            input_image_data=image_data,
+            edit_prompt=prompt,
+            width=1024,
+            height=1024,
+            steps=steps,
+            cfg=1.0,
+            workflow_type="qwen",
+            progress_callback=progress_callback,
+            additional_images=additional_image_data if additional_image_data else None
+        )
         
         # Send final completion status
         try:
@@ -813,9 +828,8 @@ class CompleteSetupView(discord.ui.View):
         if not self.video_mode and self.model == "flux":
             try:
                 # Load LoRAs for flux model (same logic as in ModelSelectMenu callback)
-                async with self.bot.image_generator as gen:
-                    all_loras = await gen.get_available_loras()
-                    self.loras = gen.filter_loras_by_model(all_loras, self.model)
+                all_loras = await self.bot.image_generator.get_available_loras()
+                self.loras = self.bot.image_generator.filter_loras_by_model(all_loras, self.model)
                     
                 # Add LoRA selector if LoRAs are available
                 if self.loras:
@@ -913,21 +927,20 @@ class GenerationSetupView(discord.ui.View):
             )
             
             # Generate images (returns list of individual images)
-            async with self.bot.image_generator as gen:
-                images_list, generation_info = await gen.generate_image(
-                    prompt=self.generation_params['prompt'],
-                    negative_prompt=self.generation_params['negative_prompt'],
-                    workflow_name=self.generation_params['workflow_name'],
-                    width=self.generation_params['width'],
-                    height=self.generation_params['height'],
-                    steps=self.generation_params['steps'],
-                    cfg=self.generation_params['cfg'],
-                    batch_size=self.generation_params['batch_size'],
-                    seed=self.generation_params['seed'],
-                    lora_name=lora_filename,
-                    lora_strength=lora_strength,
-                    progress_callback=progress_callback
-                )
+            images_list, generation_info = await self.bot.image_generator.generate_image(
+                prompt=self.generation_params['prompt'],
+                negative_prompt=self.generation_params['negative_prompt'],
+                workflow_name=self.generation_params['workflow_name'],
+                width=self.generation_params['width'],
+                height=self.generation_params['height'],
+                steps=self.generation_params['steps'],
+                cfg=self.generation_params['cfg'],
+                batch_size=self.generation_params['batch_size'],
+                seed=self.generation_params['seed'],
+                lora_name=lora_filename,
+                lora_strength=lora_strength,
+                progress_callback=progress_callback
+            )
             
             # Send final completion status update
             try:
@@ -1391,18 +1404,17 @@ class PostGenerationView(discord.ui.View):
             )
             
             # Generate upscaled image using ComfyUI
-            async with self.bot.image_generator as gen:
-                # Use the upscale workflow with image data directly
-                upscaled_data, upscale_info = await gen.generate_upscale(
-                    input_image_data=self.original_image_data,
-                    prompt=self.generation_info.get('prompt', ''),
-                    negative_prompt=self.generation_info.get('negative_prompt', ''),
-                    upscale_factor=2.0,
-                    denoise=0.35,
-                    steps=20,
-                    cfg=7.0,
-                    progress_callback=progress_callback
-                )
+            # Use the upscale workflow with image data directly
+            upscaled_data, upscale_info = await self.bot.image_generator.generate_upscale(
+                input_image_data=self.original_image_data,
+                prompt=self.generation_info.get('prompt', ''),
+                negative_prompt=self.generation_info.get('negative_prompt', ''),
+                upscale_factor=2.0,
+                denoise=0.35,
+                steps=20,
+                cfg=7.0,
+                progress_callback=progress_callback
+            )
             
             # Create success embed
             upscale_embed = discord.Embed(
@@ -1617,21 +1629,20 @@ class PostGenerationAnimationModal(discord.ui.Modal):
                 )
                 
                 # Generate video using ComfyUI with custom prompt
-                async with self.post_gen_view.bot.video_generator as gen:
-                    video_data, filename, video_info = await gen.generate_video(
-                        prompt=animation_prompt,
-                        negative_prompt=self.post_gen_view.generation_info.get('negative_prompt', ''),
-                        workflow_name=None,  # Use default video workflow
-                        width=720,
-                        height=720,
-                        steps=steps,
-                        cfg=1.0,
-                        length=frames,
-                        strength=strength,
-                        seed=None,
-                        input_image_data=self.post_gen_view.original_image_data,
-                        progress_callback=progress_callback
-                    )
+                video_data, filename, video_info = await self.post_gen_view.bot.video_generator.generate_video(
+                    prompt=animation_prompt,
+                    negative_prompt=self.post_gen_view.generation_info.get('negative_prompt', ''),
+                    workflow_name=None,  # Use default video workflow
+                    width=720,
+                    height=720,
+                    steps=steps,
+                    cfg=1.0,
+                    length=frames,
+                    strength=strength,
+                    seed=None,
+                    input_image_data=self.post_gen_view.original_image_data,
+                    progress_callback=progress_callback
+                )
                 
                 # Create success embed
                 video_embed = discord.Embed(
@@ -1839,8 +1850,7 @@ async def status_command(interaction: discord.Interaction):
     
     # Test ComfyUI connection
     try:
-        async with bot.image_generator as gen:
-            comfyui_online = await gen.test_connection()
+        comfyui_online = await bot.image_generator.test_connection()
         
         if comfyui_online:
             embed.add_field(
@@ -1893,8 +1903,7 @@ async def loras_command(interaction: discord.Interaction, model: str = "all"):
     
     try:
         # Fetch LoRAs from ComfyUI
-        async with bot.image_generator as gen:
-            all_loras = await gen.get_available_loras()
+        all_loras = await bot.image_generator.get_available_loras()
         
         if not all_loras:
             embed = discord.Embed(
@@ -2063,9 +2072,8 @@ class ModelSelectMenu(discord.ui.Select):
             
             # Fetch LoRAs for this model
             try:
-                async with view.bot.image_generator as gen:
-                    all_loras = await gen.get_available_loras()
-                    view.loras = gen.filter_loras_by_model(all_loras, selected_model)
+                all_loras = await view.bot.image_generator.get_available_loras()
+                view.loras = view.bot.image_generator.filter_loras_by_model(all_loras, selected_model)
             except Exception as e:
                 view.bot.logger.error(f"Failed to fetch LoRAs: {e}")
                 view.loras = []
@@ -2373,21 +2381,20 @@ class GenerateNowButton(discord.ui.Button):
             )
             
             # Generate images (now returns list of individual images)
-            async with view.bot.image_generator as gen:
-                images_list, generation_info = await gen.generate_image(
-                    prompt=view.prompt,
-                    negative_prompt=view.negative_prompt,
-                    workflow_name=workflow_name,
-                    width=view.width,
-                    height=view.height,
-                    steps=view.steps,
-                    cfg=view.cfg,
-                    batch_size=view.batch_size,
-                    seed=view.seed,
-                    lora_name=view.selected_lora,
-                    lora_strength=view.lora_strength,
-                    progress_callback=progress_callback
-                )
+            images_list, generation_info = await view.bot.image_generator.generate_image(
+                prompt=view.prompt,
+                negative_prompt=view.negative_prompt,
+                workflow_name=workflow_name,
+                width=view.width,
+                height=view.height,
+                steps=view.steps,
+                cfg=view.cfg,
+                batch_size=view.batch_size,
+                seed=view.seed,
+                lora_name=view.selected_lora,
+                lora_strength=view.lora_strength,
+                progress_callback=progress_callback
+            )
             
             # Send final completion status update
             try:
@@ -2689,17 +2696,16 @@ class IndividualImageView(discord.ui.View):
             )
             
             # Perform upscaling
-            async with self.bot.image_generator as gen:
-                upscaled_data, upscale_info = await gen.generate_upscale(
-                    input_image_data=self.image_data,
-                    prompt=original_prompt,
-                    negative_prompt=original_negative,
-                    upscale_factor=float(upscale_factor),
-                    denoise=denoise,
-                    steps=steps,
-                    cfg=7.0,
-                    progress_callback=progress_callback
-                )
+            upscaled_data, upscale_info = await self.bot.image_generator.generate_upscale(
+                input_image_data=self.image_data,
+                prompt=original_prompt,
+                negative_prompt=original_negative,
+                upscale_factor=float(upscale_factor),
+                denoise=denoise,
+                steps=steps,
+                cfg=7.0,
+                progress_callback=progress_callback
+            )
             
             # Send final completion status
             try:
@@ -2796,17 +2802,16 @@ class IndividualImageView(discord.ui.View):
                 cfg = 2.5
             
             # Perform editing
-            async with self.bot.image_generator as gen:
-                edited_data, edit_info = await gen.generate_edit(
-                    input_image_data=self.image_data,
-                    edit_prompt=edit_prompt,
-                    width=1024,
-                    height=1024,
-                    steps=steps,
-                    cfg=cfg,
-                    workflow_type=workflow_type,
-                    progress_callback=progress_callback
-                )
+            edited_data, edit_info = await self.bot.image_generator.generate_edit(
+                input_image_data=self.image_data,
+                edit_prompt=edit_prompt,
+                width=1024,
+                height=1024,
+                steps=steps,
+                cfg=cfg,
+                workflow_type=workflow_type,
+                progress_callback=progress_callback
+            )
             
             # Send final completion status
             try:
@@ -2889,21 +2894,20 @@ class IndividualImageView(discord.ui.View):
             )
             
             # Perform video generation using the custom animation prompt
-            async with self.bot.video_generator as gen:
-                video_data, filename, video_info = await gen.generate_video(
-                    prompt=animation_prompt,
-                    negative_prompt=self.generation_info.get('negative_prompt', ''),
-                    workflow_name=None,  # Use default video workflow
-                    width=720,
-                    height=720,
-                    steps=steps,
-                    cfg=1.0,
-                    length=frames,
-                    strength=strength,
-                    seed=None,
-                    input_image_data=self.image_data,
-                    progress_callback=progress_callback
-                )
+            video_data, filename, video_info = await self.bot.video_generator.generate_video(
+                prompt=animation_prompt,
+                negative_prompt=self.generation_info.get('negative_prompt', ''),
+                workflow_name=None,  # Use default video workflow
+                width=720,
+                height=720,
+                steps=steps,
+                cfg=1.0,
+                length=frames,
+                strength=strength,
+                seed=None,
+                input_image_data=self.image_data,
+                progress_callback=progress_callback
+            )
             
             # Send final completion status
             try:
@@ -3372,17 +3376,16 @@ class PostGenerationEditModal(discord.ui.Modal):
                     cfg = 2.5
                 
                 # Generate edited image using ComfyUI
-                async with self.post_gen_view.bot.image_generator as gen:
-                    edited_data, edit_info = await gen.generate_edit(
-                        input_image_data=self.post_gen_view.original_image_data,
-                        edit_prompt=edit_prompt,
-                        width=1024,
-                        height=1024,
-                        steps=steps,
-                        cfg=cfg,
-                        workflow_type=self.workflow_type,
-                        progress_callback=progress_callback
-                    )
+                edited_data, edit_info = await self.post_gen_view.bot.image_generator.generate_edit(
+                    input_image_data=self.post_gen_view.original_image_data,
+                    edit_prompt=edit_prompt,
+                    width=1024,
+                    height=1024,
+                    steps=steps,
+                    cfg=cfg,
+                    workflow_type=self.workflow_type,
+                    progress_callback=progress_callback
+                )
                 
                 # Create success embed
                 edit_embed = discord.Embed(

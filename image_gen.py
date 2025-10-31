@@ -282,129 +282,152 @@ class ImageGenerator:
         self._active_generations: Dict[str, dict] = {}  # prompt_id -> progress_data
         self._websocket_lock = asyncio.Lock()
         
-    async def __aenter__(self):
-        """Async context manager entry."""
-        async with self._session_lock:
-            if self.session is None or self.session.closed:
-                self.session = aiohttp.ClientSession(
-                    timeout=aiohttp.ClientTimeout(total=self.config.comfyui.timeout),
-                    connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
-                )
+    async def initialize(self):
+        """Initialize the generator (call once at bot startup)."""
+        self.logger.info("🎨 Initializing ImageGenerator...")
         
-        # Start persistent WebSocket if not already running
-        await self._ensure_websocket_connected()
+        # Create persistent HTTP session
+        self.session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=self.config.comfyui.timeout),
+            connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+        )
         
-        return self
+        # Start persistent WebSocket
+        ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
+        self._websocket_task = asyncio.create_task(self._persistent_websocket_monitor(ws_url))
+        
+        # Wait for WebSocket to connect (up to 2 seconds)
+        for _ in range(20):
+            if self._websocket_connected:
+                self.logger.info("✅ ImageGenerator initialized successfully")
+                return
+            await asyncio.sleep(0.1)
+        
+        self.logger.warning("⚠️ WebSocket not connected after initialization - will retry automatically")
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        async with self._session_lock:
-            if self.session and not self.session.closed:
-                await self.session.close()
-                self.session = None
+    async def shutdown(self):
+        """Shutdown the generator (call once at bot shutdown)."""
+        self.logger.info("🛑 Shutting down ImageGenerator...")
         
-        # Note: We DON'T close the persistent WebSocket here
-        # It stays alive for the entire bot session to handle concurrent generations
-    
-    async def _ensure_websocket_connected(self):
-        """Ensure persistent WebSocket is connected and monitoring."""
-        async with self._websocket_lock:
-            if not self._websocket_connected or self._websocket_task is None or self._websocket_task.done():
-                self.logger.info("🔌 Starting persistent WebSocket connection...")
-                ws_url = f"ws://{self.base_url.replace('http://', '').replace('https://', '')}/ws"
-                self._websocket_task = asyncio.create_task(self._persistent_websocket_monitor(ws_url))
-                # Wait a moment for connection to establish
-                await asyncio.sleep(0.5)
+        # Cancel WebSocket task
+        if self._websocket_task and not self._websocket_task.done():
+            self._websocket_task.cancel()
+            try:
+                await self._websocket_task
+            except asyncio.CancelledError:
+                pass
+        
+        # Close HTTP session
+        if self.session and not self.session.closed:
+            await self.session.close()
+        
+        self.logger.info("✅ ImageGenerator shutdown complete")
     
     async def _persistent_websocket_monitor(self, ws_url: str):
-        """Persistent WebSocket that monitors ALL generations."""
-        try:
-            import websockets
-            
-            full_ws_url = f"{ws_url}?clientId={self._bot_client_id}"
-            self.logger.info(f"📡 Connecting persistent WebSocket: {full_ws_url[:50]}...")
-            
-            async with websockets.connect(full_ws_url) as websocket:
-                self._websocket_connected = True
-                self.logger.info(f"📡 Persistent WebSocket CONNECTED for bot session {self._bot_client_id[:8]}...")
+        """Persistent WebSocket that monitors ALL generations with auto-reconnect."""
+        import websockets
+        
+        retry_count = 0
+        max_retries = 999  # Effectively infinite retries (bot lifetime)
+        
+        while retry_count < max_retries:
+            try:
+                full_ws_url = f"{ws_url}?clientId={self._bot_client_id}"
+                self.logger.info(f"📡 Connecting persistent WebSocket: {full_ws_url[:50]}...")
                 
-                while True:
-                    try:
-                        message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                async with websockets.connect(full_ws_url) as websocket:
+                    self._websocket_connected = True
+                    retry_count = 0  # Reset on successful connection
+                    self.logger.info(f"📡 Persistent WebSocket CONNECTED for bot session {self._bot_client_id[:8]}...")
+                    
+                    # Message processing loop
+                    while True:
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+                            
+                            if isinstance(message, str):
+                                data = json.loads(message)
+                                message_type = data.get('type')
+                                message_data = data.get('data', {})
+                                
+                                # Skip monitoring messages
+                                if message_type == 'crystools.monitor':
+                                    continue
+                                
+                                # Get prompt_id from message
+                                msg_prompt_id = message_data.get('prompt_id')
+                                
+                                # Find which active generation this is for
+                                if msg_prompt_id and msg_prompt_id in self._active_generations:
+                                    progress_data = self._active_generations[msg_prompt_id]
+                                    
+                                    if message_type == 'progress':
+                                        current_step = message_data.get('value', 0)
+                                        max_steps = message_data.get('max', 0)
+                                        progress_data['step_current'] = current_step
+                                        progress_data['step_total'] = max_steps
+                                        progress_data['last_websocket_update'] = time.time()
+                                        self.logger.info(f"📈 Progress for {msg_prompt_id[:8]}...: {current_step}/{max_steps}")
+                                    
+                                    elif message_type == 'executing':
+                                        node_id = message_data.get('node')
+                                        if node_id is not None:
+                                            progress_data['current_node'] = str(node_id)
+                                            progress_data['last_websocket_update'] = time.time()
+                                        else:
+                                            # Completed
+                                            progress_data['completed'] = True
+                                            progress_data['last_websocket_update'] = time.time()
+                                            self.logger.info(f"✅ Completion detected for {msg_prompt_id[:8]}...")
+                                    
+                                    elif message_type == 'progress_state':
+                                        progress_data['last_websocket_update'] = time.time()
+                                    
+                                    elif message_type == 'execution_cached':
+                                        cached_nodes = message_data.get('nodes', [])
+                                        progress_data['cached_nodes'] = cached_nodes
+                                        progress_data['last_websocket_update'] = time.time()
                         
-                        if isinstance(message, str):
-                            data = json.loads(message)
-                            message_type = data.get('type')
-                            message_data = data.get('data', {})
+                        except asyncio.TimeoutError:
+                            continue
+                        except json.JSONDecodeError:
+                            continue
                             
-                            # Skip monitoring messages
-                            if message_type == 'crystools.monitor':
-                                continue
-                            
-                            # Get prompt_id from message
-                            msg_prompt_id = message_data.get('prompt_id')
-                            
-                            # Find which active generation this is for
-                            if msg_prompt_id and msg_prompt_id in self._active_generations:
-                                progress_data = self._active_generations[msg_prompt_id]
-                                
-                                if message_type == 'progress':
-                                    current_step = message_data.get('value', 0)
-                                    max_steps = message_data.get('max', 0)
-                                    progress_data['step_current'] = current_step
-                                    progress_data['step_total'] = max_steps
-                                    progress_data['last_websocket_update'] = time.time()
-                                    self.logger.info(f"📈 Progress for {msg_prompt_id[:8]}...: {current_step}/{max_steps}")
-                                
-                                elif message_type == 'executing':
-                                    node_id = message_data.get('node')
-                                    if node_id is not None:
-                                        progress_data['current_node'] = str(node_id)
-                                        progress_data['last_websocket_update'] = time.time()
-                                    else:
-                                        # Completed
-                                        progress_data['completed'] = True
-                                        progress_data['last_websocket_update'] = time.time()
-                                        self.logger.info(f"✅ Completion detected for {msg_prompt_id[:8]}...")
-                                
-                                elif message_type == 'progress_state':
-                                    progress_data['last_websocket_update'] = time.time()
-                                
-                                elif message_type == 'execution_cached':
-                                    cached_nodes = message_data.get('nodes', [])
-                                    progress_data['cached_nodes'] = cached_nodes
-                                    progress_data['last_websocket_update'] = time.time()
-                    
-                    except asyncio.TimeoutError:
-                        continue
-                    except json.JSONDecodeError:
-                        continue
-                    
-        except asyncio.CancelledError:
-            self.logger.info("📡 Persistent WebSocket monitor cancelled")
-            raise
-        except Exception as e:
-            self.logger.warning(f"📡 Persistent WebSocket error: {e}")
-        finally:
-            self._websocket_connected = False
-            self.logger.info("📡 Persistent WebSocket disconnected")
+            except websockets.exceptions.WebSocketException as e:
+                self._websocket_connected = False
+                retry_count += 1
+                self.logger.warning(f"📡 WebSocket disconnected: {e}. Reconnecting in 5s... (attempt {retry_count})")
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                self.logger.info("📡 Persistent WebSocket monitor cancelled")
+                raise
+            except Exception as e:
+                self._websocket_connected = False
+                retry_count += 1
+                self.logger.error(f"📡 WebSocket error: {e}. Reconnecting in 5s... (attempt {retry_count})")
+                await asyncio.sleep(5)
+        
+        # If we exit the loop (max retries exceeded)
+        self._websocket_connected = False
+        self.logger.info("📡 Persistent WebSocket disconnected")
     
     async def test_connection(self) -> bool:
         """Test connection to ComfyUI server."""
         try:
             if not self.session:
-                raise RuntimeError("Session not initialized. Use async context manager.")
+                self.logger.error("Session not initialized. Call initialize() first.")
+                return False
             
             async with self.session.get(f"{self.base_url}/system_stats") as response:
                 if response.status == 200:
-                    self.logger.info("ComfyUI connection successful")
+                    self.logger.info("✅ ComfyUI connection successful")
                     return True
                 else:
-                    self.logger.error(f"ComfyUI connection failed: {response.status}")
+                    self.logger.error(f"❌ ComfyUI connection failed: {response.status}")
                     return False
                     
         except Exception as e:
-            self.logger.error(f"Failed to connect to ComfyUI: {e}")
+            self.logger.error(f"❌ Failed to connect to ComfyUI: {e}")
             return False
     
     def _load_workflow(self, workflow_name: str) -> Dict[str, Any]:
