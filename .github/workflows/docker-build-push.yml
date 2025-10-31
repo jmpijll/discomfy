@@ -57,25 +57,14 @@ jobs:
           echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Set final tags
-        id: final-tags
-        run: |
-          if [ "${{ github.event_name }}" == "release" ]; then
-            echo "tags=${{ steps.meta.outputs.tags }}" >> $GITHUB_OUTPUT
-            echo "labels=${{ steps.meta.outputs.labels }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "tags=${{ steps.tags.outputs.tags }}" >> $GITHUB_OUTPUT
-            echo "labels=" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.final-tags.outputs.tags }}
-          labels: ${{ steps.final-tags.outputs.labels }}
+          tags: ${{ github.event_name == 'release' && steps.meta.outputs.tags || steps.tags.outputs.tags }}
+          labels: ${{ github.event_name == 'release' && steps.meta.outputs.labels || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
