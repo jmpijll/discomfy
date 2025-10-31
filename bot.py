@@ -79,8 +79,9 @@ class ComfyUIBot(commands.Bot):
             self.image_generator = ImageGenerator()
             await self.image_generator.initialize()
             
-            # Initialize video generator
+            # Initialize video generator (shares session with image generator)
             self.video_generator = VideoGenerator()
+            self.video_generator.set_image_generator(self.image_generator)
             await self.video_generator.initialize()
             
             # Test ComfyUI connection (no context manager needed)
