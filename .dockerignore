@@ -1,0 +1,60 @@
+# Git files
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+docs/
+*.md
+!README.md
+CHANGELOG.md
+KNOWN_ISSUES.md
+RELEASE_NOTES*.md
+
+# Config files (should be provided via volumes or env)
+config.json
+.env
+.env.local
+*.example
+
+# Logs and outputs (should be volumes)
+logs/
+outputs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing
+test_*.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+

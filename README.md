@@ -210,6 +210,83 @@ python bot.py
 
 ---
 
+## 🐳 Docker Quick Start
+
+DisComfy is available as a pre-built Docker container from GitHub Container Registry (ghcr.io).
+
+### **Using the Pre-built Image:**
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/jmpijll/discomfy:latest
+
+# Or pull a specific version
+docker pull ghcr.io/jmpijll/discomfy:v1.4.0
+```
+
+### **Running with Docker:**
+
+```bash
+docker run -d \
+  --name discomfy \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  -v $(pwd)/workflows:/app/workflows:ro \
+  -v $(pwd)/outputs:/app/outputs \
+  -v $(pwd)/logs:/app/logs \
+  -e DISCORD_TOKEN=your_discord_token \
+  -e COMFYUI_URL=http://your-comfyui-url:8188 \
+  ghcr.io/jmpijll/discomfy:latest
+```
+
+### **Docker Compose Example:**
+
+Create a `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  discomfy:
+    image: ghcr.io/jmpijll/discomfy:latest
+    container_name: discomfy
+    restart: unless-stopped
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./workflows:/app/workflows:ro
+      - ./outputs:/app/outputs
+      - ./logs:/app/logs
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - COMFYUI_URL=${COMFYUI_URL:-http://localhost:8188}
+    env_file:
+      - .env
+```
+
+Then run:
+```bash
+docker-compose up -d
+```
+
+### **Building from Source:**
+
+```bash
+# Clone the repository
+git clone https://github.com/jmpijll/discomfy.git
+cd discomfy
+
+# Build the Docker image
+docker build -t discomfy:local .
+
+# Run the container
+docker run -d --name discomfy \
+  -v $(pwd)/config.json:/app/config.json:ro \
+  ghcr.io/jmpijll/discomfy:local
+```
+
+**Note:** Make sure your `config.json` and `workflows/` directory are accessible to the container, and that `outputs/` and `logs/` directories exist for the container to write to.
+
+---
+
 ## 📖 Usage Examples
 
 ### **Basic Image Generation:**
