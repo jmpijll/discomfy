@@ -1,12 +1,19 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 1.3.0** | Advanced AI Image & Video Generation for Discord
+**Version 1.4.0** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v1.3.0  
+**🚀 Current Version**: v1.4.0  
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
 **🎯 Status**: Production Ready
+
+### 🎉 What's New in v1.4.0
+
+- ✅ **Fixed**: Critical concurrent generation hanging bug
+- ⚡ **Improved**: 5-10x faster generation queue times
+- 🔧 **Improved**: More reliable WebSocket connections
+- 🧹 **Improved**: Cleaner, simpler codebase
 
 ---
 
@@ -333,8 +340,13 @@ discomfy/
 ├── logs/               # Bot logs
 ├── README.md          # This file
 ├── CHANGELOG.md       # Version history
-├── GUIDELINES.md      # Development guidelines
-└── PROJECT_PLAN.md    # Project roadmap
+├── KNOWN_ISSUES.md    # Known issues and limitations
+├── docs/              # Documentation
+│   ├── GUIDELINES.md  # Development guidelines
+│   ├── PROJECT_PLAN.md # Project roadmap
+│   ├── TESTING_GUIDE.md # Testing instructions
+│   └── archive/       # Archived documentation
+└── RELEASE_NOTES_v1.4.0.md  # Latest release notes
 ```
 
 ---
@@ -379,6 +391,8 @@ We welcome contributions! Here's how to get started:
 - Test with real ComfyUI workflows
 - Update documentation
 
+See [docs/GUIDELINES.md](docs/GUIDELINES.md) for detailed guidelines.
+
 ---
 
 ## 📄 License
@@ -412,4 +426,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v1.3.0 - The Professional Discord ComfyUI Bot*
+*DisComfy v1.4.0 - The Professional Discord ComfyUI Bot*
+
+---
+
+## 📚 Documentation
+
+- **[README.md](README.md)** - This file (getting started, features, usage)
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete version history
+- **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** - Known issues and limitations
+- **[RELEASE_NOTES_v1.4.0.md](RELEASE_NOTES_v1.4.0.md)** - Latest release notes
+- **[docs/GUIDELINES.md](docs/GUIDELINES.md)** - Development guidelines
+- **[docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md)** - Project roadmap
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing instructions
+
+For archived documentation and research, see [docs/archive/](docs/archive/).

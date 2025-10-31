@@ -1,41 +1,40 @@
 # Known Issues
 
-## Concurrent Queue Handling (v1.2.11)
+This document tracks known issues and limitations in DisComfy.
 
-**Status**: Known Issue - Deferred  
-**Severity**: Medium  
-**Affects**: Concurrent generation tracking
+---
 
-### Issue
-When multiple users start generations simultaneously (Gen A, Gen B), the second generation (Gen B) does not show completion in Discord until a third generation is started.
+## 🎉 No Known Issues!
 
-**Symptoms**:
-- Gen A: Works perfectly ✅
-- Gen B (while A running): Shows progress, but never completes in Discord ❌
-- Gen C started: Gen B suddenly shows as complete, Gen C gets stuck ❌
-- Single generation tracking: Works perfectly ✅
+**Current Status**: All previously reported issues have been resolved!
 
-**Technical Details**:
-- Persistent WebSocket is implemented and connected
-- Progress tracking works correctly (real-time percentages, step counts)
-- Completion detection via WebSocket works
-- HTTP polling completion detection works
-- Issue appears to be in the interaction between multiple concurrent async contexts
+### Recently Resolved Issues
 
-**Workaround**:
-Users should wait for current generation to complete before starting a new one.
+#### ✅ Concurrent Queue Handling Bug (Fixed in v1.4.0)
+**Status**: ✅ **RESOLVED** in v1.4.0 (October 31, 2025)
 
-**Investigation Needed**:
-- Async context manager lifecycle with concurrent requests
-- Discord interaction response timing
-- Progress callback execution across concurrent tasks
+The concurrent generation hanging bug has been completely fixed. Multiple users can now generate images simultaneously without any issues.
 
-**Priority**: Medium (affects concurrent users, but single-user workflow works)
+**Solution**: WebSocket initialization moved to bot startup instead of per-generation. See [RELEASE_NOTES_v1.4.0.md](RELEASE_NOTES_v1.4.0.md) for details.
+
+---
+
+## Reporting Issues
+
+If you encounter a bug or issue:
+
+1. **Check Documentation**: Review `README.md` and troubleshooting sections
+2. **Check Logs**: Review `logs/bot.log` for error messages
+3. **Search Issues**: Check if the issue was already reported on [GitHub Issues](https://github.com/jmpijll/discomfy/issues)
+4. **Create Issue**: Report new issues with:
+   - Detailed description
+   - Steps to reproduce
+   - Error messages/logs
+   - Bot version and environment details
 
 ---
 
 ## Notes
 
-Last Updated: October 4, 2025  
-Version: 1.2.11
-
+Last Updated: October 31, 2025  
+Current Version: v1.4.0
