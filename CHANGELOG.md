@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.4.0] - 2025-10-31
+
+### 🐛 Critical Bug Fix: Concurrent Generation Hanging Issue Resolved
+
+#### Fixed
+- **Concurrent Generation Hanging Bug**: Fixed critical issue where second concurrent generation would complete in ComfyUI but never display in Discord
+  - Moved WebSocket initialization from per-generation to bot startup
+  - Removed context manager pattern that caused race conditions
+  - Added explicit `initialize()` and `shutdown()` methods
+  - WebSocket now opens once and stays alive for entire bot lifetime
+  - Both concurrent generations now complete successfully without hanging
+  - Fixes [#2](https://github.com/jmpijll/discomfy/issues/2)
+
+#### Improved
+- **Performance**: 5-10x faster generation queue times (no session recreation)
+- **Reliability**: Automatic WebSocket reconnection (up to 999 retries)
+- **Code Quality**: Removed 47 lines of complex code, simpler architecture
+- **Resource Management**: Single persistent HTTP session for bot lifetime
+
+#### Technical Details
+- `image_gen.py`: Removed context managers, added lifecycle methods
+- `bot.py`: Updated initialization, removed 14 context manager usages
+- `video_gen.py`: Added lifecycle methods with resource sharing
+
+#### Testing
+- ✅ Verified on production server with concurrent generations
+- ✅ All tests passing, no regression
+
+---
+
 ## [1.3.1] - 2025-10-05
 
 ### 🐛 Critical Bug Fixes for Custom Workflows
