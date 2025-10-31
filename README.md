@@ -228,10 +228,10 @@ docker pull ghcr.io/jmpijll/discomfy:v1.4.0
 **From Docker Hub:**
 ```bash
 # Pull the latest image
-docker pull <your-dockerhub-username>/discomfy:latest
+docker pull jamiehakker/discomfy:latest
 
 # Or pull a specific version
-docker pull <your-dockerhub-username>/discomfy:v1.4.0
+docker pull jamiehakker/discomfy:v1.4.0
 ```
 
 ### **Running with Docker:**
@@ -260,7 +260,7 @@ services:
     # Use either:
     # image: ghcr.io/jmpijll/discomfy:latest
     # or:
-    image: <your-dockerhub-username>/discomfy:latest
+    image: jamiehakker/discomfy:latest
     container_name: discomfy
     restart: unless-stopped
     volumes:
