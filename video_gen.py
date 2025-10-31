@@ -18,18 +18,39 @@ class VideoGenerator(ImageGenerator):
     """Handles video generation using ComfyUI API, extending ImageGenerator."""
     
     def __init__(self):
-        super().__init__()
+        # Don't call super().__init__() yet - we'll share the session from image_gen
         self.logger = logging.getLogger(__name__)
+        self.config: BotConfig = get_config()
+        self.base_url = self.config.comfyui.url.rstrip('/')
+        self.session = None
+        self._session_lock = None
+        self._queue_lock = None
+        self._bot_client_id = None
+        self._persistent_websocket = None
+        self._websocket_task = None
+        self._websocket_connected = False
+        self._active_generations = {}
+        self._websocket_lock = None
+    
+    def set_image_generator(self, image_gen):
+        """Share the HTTP session and WebSocket from ImageGenerator."""
+        self.session = image_gen.session
+        self._session_lock = image_gen._session_lock
+        self._queue_lock = image_gen._queue_lock
+        self._bot_client_id = image_gen._bot_client_id
+        self._websocket_task = image_gen._websocket_task
+        self._websocket_connected = image_gen._websocket_connected
+        self._active_generations = image_gen._active_generations
+        self._websocket_lock = image_gen._websocket_lock
+        self.logger.info(f"🎬 VideoGenerator sharing resources with ImageGenerator (client_id: {self._bot_client_id[:8]}...)")
     
     async def initialize(self):
-        """Initialize the video generator (inherits from ImageGenerator)."""
-        await super().initialize()
-        self.logger.info("🎬 VideoGenerator initialized")
+        """Initialize is handled by sharing ImageGenerator's resources."""
+        self.logger.info("🎬 VideoGenerator initialized (sharing ImageGenerator session)")
     
     async def shutdown(self):
-        """Shutdown the video generator (inherits from ImageGenerator)."""
-        await super().shutdown()
-        self.logger.info("🎬 VideoGenerator shutdown complete")
+        """Shutdown is handled by ImageGenerator."""
+        self.logger.info("🎬 VideoGenerator shutdown (session managed by ImageGenerator)")
     
     def _update_video_workflow_parameters(
         self,
