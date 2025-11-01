@@ -1,4 +1,4 @@
-# Multi-stage build for DisComfy Discord Bot
+# Multi-stage build for DisComfy v2.0 Discord Bot
 FROM python:3.11-slim AS builder
 
 # Set working directory
@@ -37,8 +37,14 @@ COPY --from=builder /root/.local /root/.local
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
 
-# Copy application files
-COPY . .
+# Copy application files (v2.0 modular structure)
+COPY bot/ ./bot/
+COPY core/ ./core/
+COPY config/ ./config/
+COPY utils/ ./utils/
+COPY workflows/ ./workflows/
+COPY main.py config.py ./
+COPY requirements.txt .
 
 # Create necessary directories
 RUN mkdir -p outputs logs
@@ -50,10 +56,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Expose any ports if needed (not required for Discord bot, but good practice)
 EXPOSE 8080
 
-# Health check (optional - can be customized)
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)" || exit 1
 
-# Run the bot
-CMD ["python", "bot.py"]
+# Run the v2.0 bot
+CMD ["python", "main.py"]
 

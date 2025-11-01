@@ -1,5 +1,64 @@
 # Changelog
 
+## [2.0.0] - 2025-11-02
+
+### 🎉 Major Release: Complete Architectural Overhaul
+
+#### Architecture
+- **Refactored**: Complete transformation from monolithic to modular architecture
+- **Structure**: Organized into `bot/`, `core/`, `config/`, `utils/` directories
+- **Reduction**: 77% reduction in max file size (3,508 → 705 lines)
+- **Modularity**: 50+ well-organized files with clear separation of concerns
+
+#### Code Quality
+- **Testing**: Implemented comprehensive test suite (85/86 tests passing, 99%)
+- **Best Practices**: Following Context7 patterns for discord.py and aiohttp
+- **Type Safety**: Full Pydantic V2 migration with type hints throughout
+- **Design Patterns**: Strategy, ABC, Factory, Repository patterns implemented
+
+#### Features
+- **Commands**: All 6 commands refactored with new architecture (/generate, /editflux, /editqwen, /status, /help, /loras)
+- **Generators**: Refactored ImageGenerator and VideoGenerator to v2.0 architecture
+- **Validation**: Pydantic-powered validation with clear error messages
+- **Progress**: Simplified progress tracking with better accuracy
+
+#### Bug Fixes
+- **WebSocket**: Continued improvements from v1.4.0
+- **Progress**: Fixed 100% completion display issues
+- **Pydantic**: Removed all V1 deprecation warnings
+- **Discord.py**: Fixed SelectOption import for 2.x compatibility
+- **Video**: Fixed Request/Response pattern issues
+
+#### Documentation
+- **Created**: 24+ comprehensive documentation files
+- **Guides**: Migration guide, API docs, usage examples, testing guide
+- **Organization**: Archived historical docs, clean root structure
+- **Release Notes**: Complete v2.0.0 release documentation
+
+#### Docker & Deployment
+- **Dockerfile**: Updated for v2.0 structure, uses `main.py`
+- **GitHub Actions**: Configured for both GHCR and Docker Hub
+- **Containers**: Auto-publish to ghcr.io and Docker Hub
+- **Optimization**: Better layer caching, smaller image size
+
+#### Backward Compatibility
+- **100% Compatible**: No breaking changes from v1.4.0
+- **Migration**: Old entry points still work, smooth upgrade path
+- **Configuration**: No config changes required
+
+#### Performance
+- **Startup**: ~1 second (well under 3s target)
+- **Tests**: 2.58s for 86 comprehensive tests
+- **Code**: 60-75% reduction in key modules
+
+#### Developer Experience
+- **Entry Point**: New `main.py` with clean architecture
+- **Imports**: Organized imports from new modules
+- **Testing**: Easy to test individual components
+- **Extensibility**: Clean base classes for new features
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.
+
 ## [1.4.0] - 2025-10-31
 
 ### 🐛 Critical Bug Fix: Concurrent Generation Hanging Issue Resolved

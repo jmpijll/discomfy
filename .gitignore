@@ -45,6 +45,7 @@ venv.bak/
 # Logs
 logs/
 *.log
+bot_*.log
 
 # Output files
 outputs/
@@ -69,7 +70,12 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
-.cache/ 
+.cache/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/ 
 # Wiki documentation (maintained separately in wiki repo)
 wiki-docs/
 publish-wiki.ps1
