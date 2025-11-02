@@ -75,8 +75,20 @@ Thumbs.db
 # Test coverage
 .coverage
 htmlcov/
-.pytest_cache/ 
+.pytest_cache/
+
+# Testing and development
+test_*.py
+!tests/test_*.py
+pytest.ini
+
+# Development documentation (archived)
+docs/archive/
+
 # Wiki documentation (maintained separately in wiki repo)
 wiki-docs/
 publish-wiki.ps1
 WIKI_SETUP.md
+
+# Temporary merge/dev documentation
+MERGE_READY.md
