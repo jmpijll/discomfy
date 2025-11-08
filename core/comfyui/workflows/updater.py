@@ -22,16 +22,17 @@ class WorkflowParameters(BaseModel):
     - Type coercion
     - Clear field constraints
     """
-    prompt: str = Field(min_length=1, max_length=1000, description="Generation prompt")
-    negative_prompt: str = Field(default="", max_length=1000, description="Negative prompt")
-    width: int = Field(default=1024, ge=512, le=2048, description="Image width")
-    height: int = Field(default=1024, ge=512, le=2048, description="Image height")
+    prompt: str = Field(min_length=1, max_length=2000, description="Generation prompt")
+    negative_prompt: str = Field(default="", max_length=2000, description="Negative prompt")
+    width: int = Field(default=1024, ge=512, le=4096, description="Image width")
+    height: int = Field(default=1024, ge=512, le=4096, description="Image height")
     steps: int = Field(default=50, ge=1, le=150, description="Sampling steps")
     cfg: float = Field(default=5.0, ge=1.0, le=20.0, description="CFG scale")
     seed: Optional[int] = Field(default=None, ge=0, description="Random seed")
     batch_size: int = Field(default=1, ge=1, le=10, description="Batch size")
     lora_name: Optional[str] = Field(default=None, description="LoRA name")
     lora_strength: float = Field(default=1.0, ge=0.0, le=2.0, description="LoRA strength")
+    dype_exponent: Optional[float] = Field(default=None, ge=0.5, le=4.0, description="DyPE exponent for high-res generation")
     
     @field_validator('prompt')
     @classmethod
@@ -195,15 +196,38 @@ class LoraLoaderUpdater(NodeUpdater):
         return node
 
 
+class DyPEFluxUpdater(NodeUpdater):
+    """Updates DyPE_FLUX nodes for dynamic position encoding."""
+
+    def can_update(self, node: dict) -> bool:
+        """Check if node is a DyPE_FLUX."""
+        return node.get('class_type') == 'DyPE_FLUX'
+
+    def update(self, node: dict, params: WorkflowParameters) -> dict:
+        """Update DyPE_FLUX with dimensions and dype_exponent."""
+        if 'inputs' not in node:
+            node['inputs'] = {}
+
+        # Update dimensions for DyPE
+        node['inputs']['width'] = params.width
+        node['inputs']['height'] = params.height
+
+        # Update dype_exponent if provided in params
+        if params.dype_exponent is not None:
+            node['inputs']['dype_exponent'] = params.dype_exponent
+
+        return node
+
+
 class WorkflowUpdater:
     """Updates workflow with parameters using registered updaters.
-    
+
     Uses Strategy pattern for extensibility:
     - Easy to add new node types
     - Each updater is independent and testable
     - Clear separation of concerns
     """
-    
+
     def __init__(self):
         """Initialize workflow updater with default node updaters."""
         self.updaters: List[NodeUpdater] = [
@@ -213,6 +237,7 @@ class WorkflowUpdater:
             BasicSchedulerUpdater(),
             LatentImageUpdater(),
             LoraLoaderUpdater(),
+            DyPEFluxUpdater(),
         ]
     
     def register_updater(self, updater: NodeUpdater):
@@ -280,5 +305,8 @@ class WorkflowUpdater:
             
         except Exception as e:
             raise WorkflowError(f"Failed to update workflow parameters: {e}")
+
+
+
 
 

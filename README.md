@@ -1,14 +1,22 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 2.0.0** | Advanced AI Image & Video Generation for Discord
+**Version 2.1.0** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v2.0.0  
-**📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)  
+**🚀 Current Version**: v2.1.0
+**📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)
 **🎯 Status**: Production Ready
 
-### 🎉 What's New in v2.0.0 - Major Architectural Overhaul
+### 🎉 What's New in v2.1.0 - Ultra High-Resolution Support
+
+- 🚀 **NEW Model**: DyPE Flux Krea - Ultra high-resolution generation (up to 4K)
+- 📐 **Dynamic Position Encoding**: Advanced DyPE technology for higher resolution outputs
+- ⚙️ **DyPE Exponent Control**: Adjustable resolution scaling parameter (0.5-4.0)
+- 🎨 **Extended Resolution**: Support for image sizes up to 4096x4096
+- ✨ **LoRA Compatible**: Full LoRA support with the new DyPE model
+
+### 📝 Previous Release - v2.0.0
 
 - 🏗️ **Refactored**: Complete modular architecture (77% code size reduction)
 - ✅ **Testing**: 85/86 tests passing (99% pass rate)
@@ -16,7 +24,6 @@
 - 🐳 **Docker**: Updated for v2.0 with both GHCR and Docker Hub support
 - 🔒 **Quality**: Follows discord.py and aiohttp best practices
 - 💯 **Compatible**: 100% backward compatible with v1.4.0
-- 🚀 **Performance**: Faster startup, cleaner code, better maintainability
 
 **See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.**
 
@@ -42,9 +49,10 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 
 ### 🎨 **AI Image Generation**
 - **High-Quality Output**: Generate stunning images using advanced ComfyUI workflows
-- **Multiple Models**: Support for Flux, **Flux Krea ✨ NEW**, HiDream, and custom workflows
+- **Multiple Models**: Support for Flux, Flux Krea, **DyPE Flux Krea 🚀 NEW** (4K), HiDream, and custom workflows
+- **Ultra High-Resolution**: DyPE Flux Krea supports resolutions up to 4096x4096 with advanced position encoding
 - **LoRA Integration**: Dynamic LoRA loading with customizable strength
-- **Flexible Parameters**: Control width, height, steps, CFG, batch size, and seed
+- **Flexible Parameters**: Control width, height, steps, CFG, batch size, DyPE exponent, and seed
 - **Batch Generation**: Create multiple images in a single request
 
 ### 🔍 **Advanced Image Upscaling**

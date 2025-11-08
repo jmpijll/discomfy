@@ -1,12 +1,40 @@
-# DisComfy v2.0.0 Release Notes
+# DisComfy Release Notes
 
-**Release Date:** November 2, 2025  
-**Version:** 2.0.0  
-**Branch:** main (merged from v2.0-refactor)
+## v2.1.0 - Ultra High-Resolution Support
+
+**Release Date:** November 8, 2025
+**Version:** 2.1.0
+
+### 🚀 What's New
+
+#### DyPE Flux Krea Model
+- **Ultra High-Resolution Generation**: New DyPE Flux Krea model supporting resolutions up to 4096x4096
+- **Dynamic Position Encoding**: Advanced DyPE technology enables higher resolution outputs without quality degradation
+- **Adjustable DyPE Exponent**: Fine-tune resolution scaling with the dype_exponent parameter (0.5-4.0)
+- **LoRA Compatible**: Full LoRA support with strength adjustment
+- **Optimized Defaults**: 2560x2560 default resolution, 40 steps, CFG 1.0
+
+#### Technical Improvements
+- Extended `WorkflowParameters` to support dype_exponent parameter
+- New `DyPEFluxUpdater` node updater for DyPE_FLUX nodes
+- Updated UI modals with conditional parameter display based on model
+- Enhanced resolution limits (4096x4096 max for DyPE models)
+- Model-specific parameter presets in the UI
+
+#### Workflow Support
+- Added `dype-flux-krea-lora.json` workflow configuration
+- Automatic workflow parameter updates for DyPE nodes
+- Seamless integration with existing LoRA system
 
 ---
 
-## 🎉 Major Release: Complete Architectural Overhaul
+## v2.0.0 - Complete Architectural Overhaul
+
+**Release Date:** November 2, 2025
+**Version:** 2.0.0
+**Branch:** main (merged from v2.0-refactor)
+
+### 🎉 Major Release
 
 DisComfy v2.0.0 represents a complete refactoring of the codebase from a monolithic structure to a modern, modular architecture. This release maintains 100% backward compatibility while dramatically improving maintainability, testability, and code quality.
 

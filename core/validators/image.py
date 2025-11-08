@@ -72,13 +72,13 @@ class ImageValidator:
 
 class PromptParameters(BaseModel):
     """Validated prompt parameters using Pydantic.
-    
+
     Following Context7 Pydantic field validator patterns:
     - Automatic type validation
     - Custom field validators
     - Clear error messages
     """
-    prompt: str = Field(min_length=1, max_length=1000, description="Generation prompt")
+    prompt: str = Field(min_length=1, max_length=2000, description="Generation prompt")
     
     @field_validator('prompt')
     @classmethod

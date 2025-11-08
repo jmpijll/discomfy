@@ -28,11 +28,18 @@ class ModelSelectMenu(Select):
                 default=(current_model == "flux")
             ),
             SelectOption(
-                label="Flux Krea ✨ NEW",
+                label="Flux Krea ✨",
                 description="Enhanced creative generation",
                 value="flux_krea",
                 emoji="✨",
                 default=(current_model == "flux_krea")
+            ),
+            SelectOption(
+                label="DyPE Flux Krea 🚀 NEW",
+                description="Ultra high-resolution (up to 4K)",
+                value="dype_flux_krea",
+                emoji="🚀",
+                default=(current_model == "dype_flux_krea")
             ),
             SelectOption(
                 label="HiDream",
@@ -73,7 +80,11 @@ class ModelSelectMenu(Select):
         try:
             # Update view's model and apply model-specific defaults
             view.model = selected_model
-            
+
+            # Reset LoRA selection when changing models
+            view.selected_lora = None
+            view.lora_strength = 1.0
+
             # Apply model-specific defaults (from old working code)
             if selected_model == "flux":
                 view.width = 1024
@@ -81,18 +92,32 @@ class ModelSelectMenu(Select):
                 view.steps = 30
                 view.cfg = 5.0
                 view.negative_prompt = ""
+                view.batch_size = 1
+                view.dype_exponent = 2.0
             elif selected_model == "flux_krea":
                 view.width = 1024
                 view.height = 1024
                 view.steps = 30
                 view.cfg = 5.0
                 view.negative_prompt = ""
+                view.batch_size = 1
+                view.dype_exponent = 2.0
+            elif selected_model == "dype_flux_krea":
+                view.width = 2560
+                view.height = 2560
+                view.steps = 40
+                view.cfg = 1.0
+                view.negative_prompt = ""
+                view.batch_size = 1
+                view.dype_exponent = 2.0
             elif selected_model == "hidream":
                 view.width = 1216
                 view.height = 1216
                 view.steps = 50
                 view.cfg = 7.0
                 view.negative_prompt = "bad ugly jpeg artifacts"
+                view.batch_size = 1
+                view.dype_exponent = 2.0
             
             # Fetch LoRAs for this model
             try:
@@ -104,10 +129,10 @@ class ModelSelectMenu(Select):
             
             # Clear ALL items and rebuild view (like old code)
             view.clear_items()
-            
+
             # Add model select menu with correct default
             view.add_item(ModelSelectMenu(current_model=selected_model))
-            
+
             # Add LoRA selection if available
             if view.loras:
                 view.add_item(LoRASelectMenu(view.loras, view.selected_lora))
@@ -115,13 +140,16 @@ class ModelSelectMenu(Select):
                 if view.selected_lora:
                     from bot.ui.generation.buttons import LoRAStrengthButton
                     view.add_item(LoRAStrengthButton())
-            
+                    view.bot.logger.info(f"✅ Added LoRA strength button during model change for LoRA: {view.selected_lora}")
+                else:
+                    view.bot.logger.info(f"ℹ️ No LoRA selected during model change, skipping strength button")
+
             # Add parameter settings and generate buttons
             from bot.ui.generation.buttons import ParameterSettingsButton, GenerateNowButton
             view.add_item(ParameterSettingsButton())
             view.add_item(GenerateNowButton())
-            
-            view.bot.logger.info(f"✅ Updated view for model '{selected_model}' with {len(view.loras)} LoRAs")
+
+            view.bot.logger.info(f"✅ Updated view for model '{selected_model}' with {len(view.loras)} LoRAs and {len(view.children)} total items")
             
             # Update embed if view has method to do so
             if hasattr(view, 'update_model_embed'):
@@ -147,7 +175,16 @@ class LoRASelectMenu(Select):
     def __init__(self, loras: List[dict], current_lora: Optional[str] = None):
         if loras:
             options = []
-            for lora in loras[:25]:  # Discord limit: 25 options
+            # Add "None" option first
+            options.append(SelectOption(
+                label="None",
+                description="No LoRA",
+                value="none",
+                default=(current_lora is None)
+            ))
+
+            # Add LoRAs (limit to 24 since we already have the "None" option)
+            for lora in loras[:24]:  # Discord limit: 25 total (1 None + 24 LoRAs)
                 # LoRAs have 'filename' and 'display_name' keys
                 lora_filename = lora.get('filename', 'Unknown')
                 lora_display = lora.get('display_name', lora_filename)
@@ -159,14 +196,6 @@ class LoRASelectMenu(Select):
                         default=(current_lora == lora_filename)
                     )
                 )
-            
-            # Add "None" option
-            options.insert(0, SelectOption(
-                label="None",
-                description="No LoRA",
-                value="none",
-                default=(current_lora is None)
-            ))
         else:
             options = [
                 SelectOption(
@@ -213,28 +242,33 @@ class LoRASelectMenu(Select):
             try:
                 # Clear and rebuild
                 view.clear_items()
-                
+
                 # Add model select menu
                 from bot.ui.generation.select_menus import ModelSelectMenu
                 view.add_item(ModelSelectMenu(current_model=view.model if hasattr(view, 'model') else 'flux'))
-                
+
                 # Add LoRA select menu
                 if hasattr(view, 'loras') and view.loras:
                     view.add_item(LoRASelectMenu(view.loras, view.selected_lora))
-                    
+
                     # Add LoRA strength button if a LoRA is selected
                     if view.selected_lora:
                         from bot.ui.generation.buttons import LoRAStrengthButton
                         view.add_item(LoRAStrengthButton())
-                
+                        view.bot.logger.info(f"✅ Added LoRA strength button for LoRA: {view.selected_lora}")
+                    else:
+                        view.bot.logger.info(f"ℹ️ No LoRA selected, skipping strength button")
+
                 # Add parameter settings and generate buttons
                 from bot.ui.generation.buttons import ParameterSettingsButton, GenerateNowButton
                 view.add_item(ParameterSettingsButton())
                 view.add_item(GenerateNowButton())
-                
+
+                view.bot.logger.info(f"🔄 Rebuilt view with {len(view.children)} items for model {view.model if hasattr(view, 'model') else 'unknown'}")
+
                 # Update the message with new view
                 await interaction.edit_original_response(view=view)
-                
+
             except Exception as e:
                 if hasattr(view, 'bot'):
                     view.bot.logger.error(f"Error updating LoRA selection: {e}")

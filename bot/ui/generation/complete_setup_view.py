@@ -55,7 +55,7 @@ class CompleteSetupView(View):
             self.lora_strength = 1.0
             self.negative_prompt = ""
             self.loras = []  # Will be populated during async initialization
-            
+
             # Default parameters for flux model
             self.width = 1024
             self.height = 1024
@@ -63,6 +63,7 @@ class CompleteSetupView(View):
             self.cfg = 5.0
             self.batch_size = 1
             self.seed = None
+            self.dype_exponent = 2.0  # Default for DyPE models
             
             # Add image generation controls
             self.add_item(ModelSelectMenu(self.model))
@@ -131,20 +132,23 @@ class CompleteSetupView(View):
                 workflow_name = "flux_lora"  # flux_lora.json
             elif self.model == "flux_krea":
                 workflow_name = "flux_krea_lora"  # flux_krea_lora.json
+            elif self.model == "dype_flux_krea":
+                workflow_name = "dype_flux_krea_lora"  # dype-flux-krea-lora.json
             elif self.model == "hidream":
                 workflow_name = "hidream_lora"  # hidream_lora.json
-            
+
             if not workflow_name:
                 await interaction.followup.send(
                     "❌ Selected model is not available.",
                     ephemeral=True
                 )
                 return
-            
+
             # Remove the setup view immediately and show starting progress
             model_display = {
                 "flux": "Flux",
                 "flux_krea": "Flux Krea ✨ NEW",
+                "dype_flux_krea": "DyPE Flux Krea 🚀 NEW",
                 "hidream": "HiDream"
             }.get(self.model, self.model)
             
@@ -172,21 +176,28 @@ class CompleteSetupView(View):
                 settings_text
             )
             
+            # Prepare generation parameters
+            gen_params = {
+                'prompt': self.prompt,
+                'negative_prompt': self.negative_prompt,
+                'workflow_name': workflow_name,
+                'width': self.width,
+                'height': self.height,
+                'steps': self.steps,
+                'cfg': self.cfg,
+                'batch_size': self.batch_size,
+                'seed': self.seed,
+                'lora_name': self.selected_lora,
+                'lora_strength': self.lora_strength,
+                'progress_callback': progress_callback
+            }
+
+            # Add dype_exponent for DyPE models
+            if self.model == 'dype_flux_krea':
+                gen_params['dype_exponent'] = self.dype_exponent
+
             # Generate images
-            images_list, generation_info = await self.bot.image_generator.generate_image(
-                prompt=self.prompt,
-                negative_prompt=self.negative_prompt,
-                workflow_name=workflow_name,
-                width=self.width,
-                height=self.height,
-                steps=self.steps,
-                cfg=self.cfg,
-                batch_size=self.batch_size,
-                seed=self.seed,
-                lora_name=self.selected_lora,
-                lora_strength=self.lora_strength,
-                progress_callback=progress_callback
-            )
+            images_list, generation_info = await self.bot.image_generator.generate_image(**gen_params)
             
             # Show result in THE SAME MESSAGE (cleaner UX)
             from bot.ui.generation.post_view import PostGenerationView
@@ -231,7 +242,8 @@ class CompleteSetupView(View):
         try:
             model_display = {
                 "flux": "Flux",
-                "flux_krea": "Flux Krea ✨ NEW",
+                "flux_krea": "Flux Krea ✨",
+                "dype_flux_krea": "DyPE Flux Krea 🚀 NEW",
                 "hidream": "HiDream"
             }.get(selected_model, selected_model)
             

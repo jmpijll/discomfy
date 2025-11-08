@@ -1,5 +1,69 @@
 # Changelog
 
+## [2.1.0] - 2025-11-08
+
+### 🚀 New Features: DyPE Flux Krea Model + Smart Image Compression
+
+#### New Model Support
+- **DyPE Flux Krea**: Ultra high-resolution image generation (up to 4K)
+  - Dynamic Position Encoding for exceptional detail at high resolutions
+  - Default 2560x2560 resolution with up to 4096x4096 support
+  - Optimized defaults: 40 steps, CFG 1.0, dype_exponent 2.0
+  - Full LoRA support with 19 compatible LoRAs
+  - Added `dype-flux-krea-lora.json` workflow
+
+#### Smart Image Compression
+- **Lossless PNG Optimization**: Automatically compresses large images while preserving quality
+  - Two-tier compression strategy: PNG optimization first, JPEG fallback
+  - PNG compression levels 9, 6, 3 tried sequentially (completely lossless)
+  - JPEG fallback with high-quality settings (98→95→92→...→60)
+  - Only compresses images >10MB (Discord's upload limit)
+  - Original PNG always saved to disk for archival
+  - Compression notice in Discord embed shows format used and ratio
+
+#### UI Improvements
+- **Fixed LoRA Dropdown**: Resolved Discord's 25 option limit issue
+  - "None" option now added first, followed by 24 LoRAs
+  - Prevents "Invalid Form Body" errors
+  - LoRA strength button now appears correctly for DyPE model
+- **WAN LoRA Filtering**: Video workflow LoRAs no longer appear in image generation
+  - Reduces clutter in LoRA dropdown
+  - Prevents confusion about LoRA compatibility
+- **DyPE-Specific Modal**: Custom parameter modal for DyPE model
+  - DyPE exponent control (0.5-4.0) instead of batch size
+  - Extended dimension limits (512-4096 vs 512-2048)
+  - Model-specific defaults and validation
+
+#### Technical Improvements
+- **WorkflowUpdater**: Added `DyPEFluxUpdater` for DyPE-specific nodes
+  - Handles `DyPE_FLUX` node parameter updates
+  - Supports width, height, and dype_exponent parameters
+- **Model Configuration**: Added DyPE config to workflows
+  - Default dimensions, steps, CFG, and dype_exponent
+  - Workflow file mapping in configuration
+- **Validation**: Extended dimension validation for DyPE (up to 4096px)
+
+#### Bug Fixes
+- **LoRA Selection State**: Fixed LoRA reset when changing models
+- **Button Visibility**: LoRA strength button now appears reliably
+- **Progress Display**: Better handling of high-resolution generation progress
+- **File Size Handling**: Graceful handling of images exceeding Discord limits
+
+#### Performance
+- **Compression Speed**: Fast lossless PNG optimization (<1s for most images)
+- **Minimal Quality Loss**: High-quality JPEG settings when conversion needed
+- **Efficient Caching**: Compression results cached for action buttons
+
+### Technical Details
+- Modified Files:
+  - `bot/ui/generation/select_menus.py`: Fixed LoRA dropdown, added DyPE defaults
+  - `bot/ui/generation/modals.py`: Added DyPE-specific parameter modal
+  - `bot/ui/generation/post_view.py`: Implemented smart compression system
+  - `bot/ui/generation/complete_setup_view.py`: Added DyPE workflow mapping
+  - `core/generators/image.py`: Added WAN LoRA filtering
+  - `core/comfyui/workflows/updater.py`: Added DyPEFluxUpdater
+  - `config.json`: Added dype_flux_krea_lora workflow configuration
+
 ## [2.0.0] - 2025-11-02
 
 ### 🎉 Major Release: Complete Architectural Overhaul

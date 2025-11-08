@@ -38,6 +38,7 @@ class ImageGenerationRequest(GenerationRequest):
     batch_size: int = 1
     lora_name: Optional[str] = None
     lora_strength: float = 1.0
+    dype_exponent: Optional[float] = None
 
 
 class ImageGenerator(BaseGenerator):
@@ -147,25 +148,28 @@ class ImageGenerator(BaseGenerator):
         """Backward compatibility: filter LoRAs based on the selected model type."""
         try:
             original_count = len(loras)
-            
+
+            # First, exclude WAN LoRAs (used for video animation workflows)
+            loras = [lora for lora in loras if 'wan' not in lora['filename'].lower()]
+
             if model_type.lower() == 'hidream':
                 # Only include LoRAs with 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' in lora['filename'].lower()]
-            elif model_type.lower() in ['flux', 'flux_krea']:
+            elif model_type.lower() in ['flux', 'flux_krea', 'dype_flux_krea']:
                 # Include LoRAs that don't have 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
-                
+
                 # Fallback: if no flux-specific LoRAs found, allow all LoRAs
                 if not filtered and loras:
-                    self.logger.warning(f"No flux-specific LoRAs found, allowing all {original_count} LoRAs for flux models")
+                    self.logger.warning(f"No flux-specific LoRAs found, allowing all {len(loras)} LoRAs for flux models")
                     filtered = loras
             else:
-                # Unknown model type, return all
+                # Unknown model type, return all (minus WAN)
                 filtered = loras
-            
-            self.logger.debug(f"Filtered {len(filtered)}/{original_count} LoRAs for model type '{model_type}'")
+
+            self.logger.debug(f"Filtered {len(filtered)}/{original_count} LoRAs for model type '{model_type}' (excluded WAN LoRAs)")
             return filtered
-            
+
         except Exception as e:
             self.logger.error(f"Failed to filter LoRAs: {e}")
             return loras
@@ -259,7 +263,8 @@ class ImageGenerator(BaseGenerator):
                 seed=request.seed,
                 batch_size=request.batch_size,
                 lora_name=request.lora_name,
-                lora_strength=request.lora_strength
+                lora_strength=request.lora_strength,
+                dype_exponent=request.dype_exponent
             )
             
             # Update workflow
@@ -666,17 +671,18 @@ class ImageGenerator(BaseGenerator):
         batch_size: int = 1,
         lora_name: Optional[str] = None,
         lora_strength: float = 1.0,
+        dype_exponent: Optional[float] = None,
         progress_callback=None
     ) -> Tuple[List[bytes], Dict[str, Any]]:
         """
         Generate images (backward compatibility method).
-        
+
         Maintains old interface for existing bot code.
         """
         # Use default workflow if none specified
         if not workflow_name:
             workflow_name = self.config.generation.default_workflow
-        
+
         # Create new-style request
         request = ImageGenerationRequest(
             prompt=prompt,
@@ -690,6 +696,7 @@ class ImageGenerator(BaseGenerator):
             batch_size=batch_size,
             lora_name=lora_name,
             lora_strength=lora_strength,
+            dype_exponent=dype_exponent,
             progress_callback=progress_callback
         )
         

@@ -196,3 +196,6 @@ class TestLorasCommand:
         assert mock_discord_interaction.response.send_message.called
 
 
+
+
+

@@ -23,8 +23,8 @@ class GeneratorType(str, Enum):
 class GenerationRequest(BaseModel):
     """Base request for generation with Pydantic validation."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
-    prompt: str = Field(min_length=1, max_length=1000, description="Generation prompt")
+
+    prompt: str = Field(min_length=1, max_length=2000, description="Generation prompt")
     workflow_name: str = Field(description="Name of the workflow to use")
     seed: Optional[int] = Field(default=None, ge=0, description="Random seed")
     progress_callback: Optional[Callable] = Field(default=None, exclude=True, description="Progress callback")
@@ -47,9 +47,9 @@ class UpscaleGenerationRequest(BaseModel):
 class EditGenerationRequest(BaseModel):
     """Request for image editing."""
     model_config = ConfigDict(arbitrary_types_allowed=True)
-    
+
     input_image_data: bytes = Field(description="Input image data to edit")
-    edit_prompt: str = Field(min_length=1, max_length=1000, description="Edit instruction prompt")
+    edit_prompt: str = Field(min_length=1, max_length=2000, description="Edit instruction prompt")
     workflow_type: str = Field(default="flux", description="Edit type: 'flux' or 'qwen'")
     width: int = Field(default=1024, ge=512, le=2048, description="Output width")
     height: int = Field(default=1024, ge=512, le=2048, description="Output height")
