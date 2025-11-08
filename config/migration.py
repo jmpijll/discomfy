@@ -32,6 +32,18 @@ def get_default_workflows() -> Dict[str, Any]:
             "enabled": True,
             "supports_lora": True
         },
+        "dype_flux_krea_lora": {
+            "name": "DyPE Flux Krea with LoRA",
+            "description": "Dynamic Position Encoding Flux Krea - ultra high-resolution generation with LoRA support",
+            "file": "dype-flux-krea-lora.json",
+            "type": "image",
+            "model_type": "dype_flux_krea",
+            "enabled": True,
+            "supports_lora": True,
+            "default_width": 2560,
+            "default_height": 2560,
+            "default_dype_exponent": 2.0
+        },
         "hidream_lora": {
             "name": "HiDream with LoRA",
             "description": "High-quality image generation with HiDream model and LoRA support",

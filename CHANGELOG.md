@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.1.1] - 2025-11-08
+
+### 🐛 Bug Fixes: Docker Container Support for DyPE Workflow
+
+#### Fixed Docker Container Issues
+- **DyPE Workflow Missing in Containers**: Added `dype_flux_krea_lora` workflow to default configurations
+  - Updated `config.example.json` with DyPE workflow configuration
+  - Updated `config/migration.py` get_default_workflows() to include DyPE
+  - Dockerfile now copies `config.example.json` to container
+  - Containers without mounted config.json will now have DyPE workflow available
+
+#### Root Cause
+When users ran the Docker container without mounting their own `config.json`, the bot fell back to hardcoded default workflows in `get_default_workflows()` which didn't include the new DyPE workflow added in v2.1.0. This caused the error: `Image generation failed: 'dype_flux_krea_lora'`.
+
+#### Solution
+- Added DyPE workflow to all three config sources:
+  1. `config.example.json` (template file)
+  2. `config/migration.py` default workflows (fallback)
+  3. Dockerfile now includes example config in container
+
+Users upgrading from v2.1.0 to v2.1.1:
+- If using Docker with environment variables: Pull new image, containers will automatically have DyPE workflow
+- If using mounted config.json: The migration system will automatically add DyPE workflow on startup
+- No manual intervention required!
+
+### Technical Details
+- Modified Files:
+  - `config.example.json`: Added dype_flux_krea_lora workflow configuration
+  - `config/migration.py`: Added dype_flux_krea_lora to get_default_workflows()
+  - `Dockerfile`: Now copies config.example.json to container for fallback use
+
+---
+
 ## [2.1.0] - 2025-11-08
 
 ### 🚀 New Features: DyPE Flux Krea Model + Smart Image Compression

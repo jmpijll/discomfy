@@ -45,6 +45,7 @@ COPY utils/ ./utils/
 COPY workflows/ ./workflows/
 COPY main.py config.py ./
 COPY requirements.txt .
+COPY config.example.json ./
 
 # Create necessary directories
 RUN mkdir -p outputs logs
