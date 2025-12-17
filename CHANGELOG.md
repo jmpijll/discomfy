@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.1.2] - 2025-12-17
+
+### ⚡ New Feature: ZI Turbo Model
+
+#### Ultra-Fast Generation
+- **ZI Turbo Model**: New ultra-fast turbo generation model with custom LoRA support
+  - Only 10 steps for rapid image generation
+  - CFG 1.0 optimized for speed
+  - Default resolution 1536x1048
+  - Full compatibility with flux-based LoRAs
+
+#### Technical Improvements
+- **KSamplerAdvanced Support**: Added `KSamplerAdvancedUpdater` to workflow updater
+  - Handles advanced sampler nodes used in ZI Turbo workflow
+  - Proper noise_seed, steps, and CFG parameter updates
+  - Reference-based positive/negative prompt handling
+- **Model Selection**: Added ZI Turbo to model dropdown with NEW tag
+- **LoRA Filtering**: Updated filter to include ziturbo as flux-compatible model
+
+#### Files Changed
+- `workflows/ZITURBO1.json`: New ZI Turbo workflow
+- `config.example.json`: Added ziturbo workflow configuration
+- `bot/ui/generation/select_menus.py`: Added ZI Turbo option and defaults
+- `bot/ui/generation/complete_setup_view.py`: Added workflow mapping and display name
+- `core/comfyui/workflows/updater.py`: Added KSamplerAdvancedUpdater
+- `core/generators/image.py`: Updated LoRA filter for ziturbo
+
+---
+
 ## [2.1.1] - 2025-11-08
 
 ### 🐛 Bug Fixes: Docker Container Support for DyPE Workflow

@@ -5,7 +5,7 @@
 set -e
 
 IMAGE_NAME="ghcr.io/jmpijll/discomfy"
-VERSION="v2.0.0"
+VERSION="v2.1.2"
 
 echo "🔐 Logging in to GitHub Container Registry..."
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u jmpijll --password-stdin

@@ -1,29 +1,33 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 2.1.0** | Advanced AI Image & Video Generation for Discord
+**Version 2.1.2** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v2.1.0
+**🚀 Current Version**: v2.1.2
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)
 **🎯 Status**: Production Ready
 
-### 🎉 What's New in v2.1.0 - Ultra High-Resolution Support
+### 🎉 What's New in v2.1.2 - ZI Turbo Model
 
-- 🚀 **NEW Model**: DyPE Flux Krea - Ultra high-resolution generation (up to 4K)
-- 📐 **Dynamic Position Encoding**: Advanced DyPE technology for higher resolution outputs
-- ⚙️ **DyPE Exponent Control**: Adjustable resolution scaling parameter (0.5-4.0)
-- 🎨 **Extended Resolution**: Support for image sizes up to 4096x4096
-- ✨ **LoRA Compatible**: Full LoRA support with the new DyPE model
+- ⚡ **NEW Model**: ZI Turbo - Ultra-fast turbo generation with custom LoRA support
+- 🔥 **Speed Optimized**: Only 10 steps with CFG 1.0 for rapid generation
+- 📐 **Custom Resolution**: Default 1536x1048 optimized for the turbo model
+- ✨ **Full LoRA Support**: Compatible with all flux-based LoRAs
+- 🛠️ **KSamplerAdvanced**: New workflow updater for advanced sampling nodes
 
-### 📝 Previous Release - v2.0.0
+### 📝 Previous Releases
 
-- 🏗️ **Refactored**: Complete modular architecture (77% code size reduction)
-- ✅ **Testing**: 85/86 tests passing (99% pass rate)
-- 📚 **Documentation**: 24+ comprehensive guides
-- 🐳 **Docker**: Updated for v2.0 with both GHCR and Docker Hub support
-- 🔒 **Quality**: Follows discord.py and aiohttp best practices
-- 💯 **Compatible**: 100% backward compatible with v1.4.0
+**v2.1.0 - Ultra High-Resolution Support:**
+- 🚀 DyPE Flux Krea model with 4K resolution support
+- 📐 Dynamic Position Encoding technology
+- ⚙️ Adjustable DyPE exponent control
+
+**v2.0.0 - Architectural Overhaul:**
+- 🏗️ Complete modular architecture (77% code size reduction)
+- ✅ 85/86 tests passing (99% pass rate)
+- 📚 24+ comprehensive documentation guides
+- 🐳 Docker support with GHCR and Docker Hub
 
 **See [RELEASE_NOTES.md](RELEASE_NOTES.md) for complete details.**
 
@@ -49,7 +53,8 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 
 ### 🎨 **AI Image Generation**
 - **High-Quality Output**: Generate stunning images using advanced ComfyUI workflows
-- **Multiple Models**: Support for Flux, Flux Krea, **DyPE Flux Krea 🚀 NEW** (4K), HiDream, and custom workflows
+- **Multiple Models**: Support for Flux, Flux Krea, DyPE Flux Krea (4K), **ZI Turbo ⚡ NEW**, HiDream, and custom workflows
+- **Ultra-Fast Generation**: ZI Turbo delivers rapid results with only 10 steps
 - **Ultra High-Resolution**: DyPE Flux Krea supports resolutions up to 4096x4096 with advanced position encoding
 - **LoRA Integration**: Dynamic LoRA loading with customizable strength
 - **Flexible Parameters**: Control width, height, steps, CFG, batch size, DyPE exponent, and seed
@@ -235,7 +240,7 @@ DisComfy is available as a pre-built Docker container from both GitHub Container
 docker pull ghcr.io/jmpijll/discomfy:latest
 
 # Or pull a specific version
-docker pull ghcr.io/jmpijll/discomfy:v1.4.0
+docker pull ghcr.io/jmpijll/discomfy:v2.1.2
 ```
 
 **From Docker Hub:**
@@ -244,7 +249,7 @@ docker pull ghcr.io/jmpijll/discomfy:v1.4.0
 docker pull jamiehakker/discomfy:latest
 
 # Or pull a specific version
-docker pull jamiehakker/discomfy:v1.4.0
+docker pull jamiehakker/discomfy:v2.1.2
 ```
 
 ### **Running with Docker:**
@@ -432,6 +437,8 @@ discomfy/
 ├── workflows/           # ComfyUI workflow files
 │   ├── flux_lora.json
 │   ├── flux_krea_lora.json    # Enhanced Flux Krea model
+│   ├── dype-flux-krea-lora.json # DyPE 4K model
+│   ├── ZITURBO1.json          # ZI Turbo fast generation
 │   ├── flux_kontext_edit.json # Flux Kontext editing
 │   ├── qwen_image_edit.json   # Qwen 2.5 VL fast editing (1 image)
 │   ├── qwen_image_edit_2.json # Qwen 2.5 VL multi-image (2 images)
@@ -529,7 +536,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v1.4.0 - The Professional Discord ComfyUI Bot*
+*DisComfy v2.1.2 - The Professional Discord ComfyUI Bot*
 
 ---
 

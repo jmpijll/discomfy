@@ -1,5 +1,32 @@
 # DisComfy Release Notes
 
+## v2.1.2 - ZI Turbo Model
+
+**Release Date:** December 17, 2025
+**Version:** 2.1.2
+
+### ⚡ What's New
+
+#### ZI Turbo Model
+- **Ultra-Fast Generation**: New ZI Turbo model for rapid image generation
+- **Speed Optimized**: Only 10 steps with CFG 1.0 for lightning-fast results
+- **Custom Resolution**: Default 1536x1048 optimized for the turbo workflow
+- **Full LoRA Support**: Compatible with all flux-based LoRAs
+- **Easy Selection**: Available in model dropdown with "⚡ NEW" tag
+
+#### Technical Improvements
+- New `KSamplerAdvancedUpdater` in workflow updater for advanced sampler nodes
+- Proper handling of noise_seed, steps, and CFG parameters
+- Reference-based positive/negative prompt updates
+- Updated LoRA filtering to include ziturbo as flux-compatible
+
+#### Workflow Support
+- Added `ZITURBO1.json` workflow configuration
+- Automatic workflow parameter updates for KSamplerAdvanced nodes
+- Seamless integration with existing LoRA system
+
+---
+
 ## v2.1.0 - Ultra High-Resolution Support
 
 **Release Date:** November 8, 2025
