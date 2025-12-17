@@ -155,7 +155,7 @@ class ImageGenerator(BaseGenerator):
             if model_type.lower() == 'hidream':
                 # Only include LoRAs with 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' in lora['filename'].lower()]
-            elif model_type.lower() in ['flux', 'flux_krea', 'dype_flux_krea']:
+            elif model_type.lower() in ['flux', 'flux_krea', 'dype_flux_krea', 'ziturbo']:
                 # Include LoRAs that don't have 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
 

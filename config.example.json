@@ -85,6 +85,19 @@
       "type": "video",
       "enabled": true,
       "supports_lora": false
+    },
+    "ziturbo": {
+      "name": "ZI Turbo",
+      "description": "Ultra-fast turbo generation with custom LoRA support",
+      "file": "ZITURBO1.json",
+      "type": "image",
+      "model_type": "ziturbo",
+      "enabled": true,
+      "supports_lora": true,
+      "default_width": 1536,
+      "default_height": 1048,
+      "default_steps": 10,
+      "default_cfg": 1.0
     }
   },
   "logging": {

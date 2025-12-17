@@ -102,6 +102,37 @@ class KSamplerUpdater(NodeUpdater):
         return node
 
 
+class KSamplerAdvancedUpdater(NodeUpdater):
+    """Updates KSamplerAdvanced nodes (ZI Turbo workflows)."""
+    
+    def can_update(self, node: dict) -> bool:
+        """Check if node is a KSamplerAdvanced."""
+        return node.get('class_type') == 'KSamplerAdvanced'
+    
+    def update(self, node: dict, params: WorkflowParameters) -> dict:
+        """Update KSamplerAdvanced with sampling parameters."""
+        if 'inputs' not in node:
+            node['inputs'] = {}
+        
+        # Update seed (noise_seed for advanced sampler)
+        node['inputs']['noise_seed'] = params.seed or random.randint(0, 2**32 - 1)
+        node['inputs']['steps'] = params.steps
+        node['inputs']['cfg'] = params.cfg
+        
+        # Update positive/negative prompts via connected nodes
+        positive_input = node['inputs'].get('positive')
+        if positive_input and isinstance(positive_input, list) and len(positive_input) >= 1:
+            # Store reference for later update
+            node['_update_positive_ref'] = positive_input[0]
+        
+        negative_input = node['inputs'].get('negative')
+        if negative_input and isinstance(negative_input, list) and len(negative_input) >= 1:
+            # Store reference for later update
+            node['_update_negative_ref'] = negative_input[0]
+        
+        return node
+
+
 class CLIPTextEncodeUpdater(NodeUpdater):
     """Updates CLIP text encode nodes for prompts."""
     
@@ -232,6 +263,7 @@ class WorkflowUpdater:
         """Initialize workflow updater with default node updaters."""
         self.updaters: List[NodeUpdater] = [
             KSamplerUpdater(),
+            KSamplerAdvancedUpdater(),
             CLIPTextEncodeUpdater(),
             RandomNoiseUpdater(),
             BasicSchedulerUpdater(),

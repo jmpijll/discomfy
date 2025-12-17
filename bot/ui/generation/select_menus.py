@@ -48,6 +48,13 @@ class ModelSelectMenu(Select):
                 emoji="🎨",
                 default=(current_model == "hidream")
             ),
+            SelectOption(
+                label="ZI Turbo ⚡ NEW",
+                description="Ultra-fast turbo generation",
+                value="ziturbo",
+                emoji="🔥",
+                default=(current_model == "ziturbo")
+            ),
         ]
         
         super().__init__(
@@ -116,6 +123,14 @@ class ModelSelectMenu(Select):
                 view.steps = 50
                 view.cfg = 7.0
                 view.negative_prompt = "bad ugly jpeg artifacts"
+                view.batch_size = 1
+                view.dype_exponent = 2.0
+            elif selected_model == "ziturbo":
+                view.width = 1536
+                view.height = 1048
+                view.steps = 10
+                view.cfg = 1.0
+                view.negative_prompt = "blurry ugly bad"
                 view.batch_size = 1
                 view.dype_exponent = 2.0
             

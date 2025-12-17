@@ -136,6 +136,8 @@ class CompleteSetupView(View):
                 workflow_name = "dype_flux_krea_lora"  # dype-flux-krea-lora.json
             elif self.model == "hidream":
                 workflow_name = "hidream_lora"  # hidream_lora.json
+            elif self.model == "ziturbo":
+                workflow_name = "ziturbo"  # ZITURBO1.json
 
             if not workflow_name:
                 await interaction.followup.send(
@@ -147,9 +149,10 @@ class CompleteSetupView(View):
             # Remove the setup view immediately and show starting progress
             model_display = {
                 "flux": "Flux",
-                "flux_krea": "Flux Krea ✨ NEW",
-                "dype_flux_krea": "DyPE Flux Krea 🚀 NEW",
-                "hidream": "HiDream"
+                "flux_krea": "Flux Krea ✨",
+                "dype_flux_krea": "DyPE Flux Krea 🚀",
+                "hidream": "HiDream",
+                "ziturbo": "ZI Turbo ⚡ NEW"
             }.get(self.model, self.model)
             
             progress_embed = discord.Embed(
@@ -243,8 +246,9 @@ class CompleteSetupView(View):
             model_display = {
                 "flux": "Flux",
                 "flux_krea": "Flux Krea ✨",
-                "dype_flux_krea": "DyPE Flux Krea 🚀 NEW",
-                "hidream": "HiDream"
+                "dype_flux_krea": "DyPE Flux Krea 🚀",
+                "hidream": "HiDream",
+                "ziturbo": "ZI Turbo ⚡ NEW"
             }.get(selected_model, selected_model)
             
             updated_embed = discord.Embed(
