@@ -1,22 +1,28 @@
 # 🎨 DisComfy - Discord AI Art Bot
 
-**Version 2.1.2** | Advanced AI Image & Video Generation for Discord
+**Version 2.2.0** | Advanced AI Image & Video Generation for Discord
 
 **The most advanced Discord bot for AI image and video generation!** DisComfy seamlessly integrates with ComfyUI to bring professional-grade AI art generation directly to your Discord server. Create stunning visuals, upscale images, and generate videos with real-time progress tracking and interactive parameter selection.
 
-**🚀 Current Version**: v2.1.2
+**🚀 Current Version**: v2.2.0
 **📂 Repository**: [https://github.com/jmpijll/discomfy.git](https://github.com/jmpijll/discomfy.git)
 **🎯 Status**: Production Ready
 
-### 🎉 What's New in v2.1.2 - ZI Turbo Model
+### 🎉 What's New - Qwen Image 2512 Model
 
-- ⚡ **NEW Model**: ZI Turbo - Ultra-fast turbo generation with custom LoRA support
-- 🔥 **Speed Optimized**: Only 10 steps with CFG 1.0 for rapid generation
-- 📐 **Custom Resolution**: Default 1536x1048 optimized for the turbo model
-- ✨ **Full LoRA Support**: Compatible with all flux-based LoRAs
-- 🛠️ **KSamplerAdvanced**: New workflow updater for advanced sampling nodes
+- 🧠 **NEW Model**: Qwen Image 2512 - High-quality text-to-image with built-in hi-res fix
+- 🔬 **Hi-Res Fix Pipeline**: 1.5x latent upscale with dedicated refinement pass
+- 📐 **Portrait Optimized**: Default 1296x1728 (3:4 ratio)
+- ✨ **LoRA Support**: Compatible with Qwen Image 2512 LoRAs
+- ⚡ **Fast Generation**: Only 8 steps at CFG 0.8 for the initial pass
+- 🔧 **Workflow Enable/Disable**: Control models via environment variables
 
 ### 📝 Previous Releases
+
+**v2.1.2 - ZI Turbo Model:**
+- ⚡ ZI Turbo ultra-fast turbo generation
+- 🔥 Only 10 steps with CFG 1.0 for rapid generation
+- 🛠️ KSamplerAdvanced workflow updater
 
 **v2.1.0 - Ultra High-Resolution Support:**
 - 🚀 DyPE Flux Krea model with 4K resolution support
@@ -53,8 +59,8 @@ DisComfy isn't just another AI bot - it's a complete creative powerhouse that br
 
 ### 🎨 **AI Image Generation**
 - **High-Quality Output**: Generate stunning images using advanced ComfyUI workflows
-- **Multiple Models**: Support for Flux, Flux Krea, DyPE Flux Krea (4K), **ZI Turbo ⚡ NEW**, HiDream, and custom workflows
-- **Ultra-Fast Generation**: ZI Turbo delivers rapid results with only 10 steps
+- **Multiple Models**: Support for Flux, Flux Krea, DyPE Flux Krea (4K), ZI Turbo, **Qwen Image 2512 🧠 NEW**, HiDream, and custom workflows
+- **Hi-Res Fix Pipeline**: Qwen Image 2512 features a built-in 1.5x latent upscale with refinement pass
 - **Ultra High-Resolution**: DyPE Flux Krea supports resolutions up to 4096x4096 with advanced position encoding
 - **LoRA Integration**: Dynamic LoRA loading with customizable strength
 - **Flexible Parameters**: Control width, height, steps, CFG, batch size, DyPE exponent, and seed
@@ -240,7 +246,7 @@ DisComfy is available as a pre-built Docker container from both GitHub Container
 docker pull ghcr.io/jmpijll/discomfy:latest
 
 # Or pull a specific version
-docker pull ghcr.io/jmpijll/discomfy:v2.1.2
+docker pull ghcr.io/jmpijll/discomfy:v2.2.0
 ```
 
 **From Docker Hub:**
@@ -249,7 +255,7 @@ docker pull ghcr.io/jmpijll/discomfy:v2.1.2
 docker pull jamiehakker/discomfy:latest
 
 # Or pull a specific version
-docker pull jamiehakker/discomfy:v2.1.2
+docker pull jamiehakker/discomfy:v2.2.0
 ```
 
 ### **Running with Docker:**
@@ -383,6 +389,23 @@ Add your ComfyUI workflows to the `workflows/` folder and configure them in `con
 }
 ```
 
+### **Enable/Disable Workflows:**
+Control which models and features are available via environment variables:
+
+```bash
+# In your .env file
+WORKFLOW_HIDREAM_LORA_ENABLED=false
+WORKFLOW_VIDEO_WAN_VACE_14B_I2V_ENABLED=false
+```
+
+All workflows are enabled by default. This is useful for:
+- Retiring old models
+- Reducing server load
+- Testing specific features
+- Maintenance mode
+
+See [Workflow Management Guide](docs/WORKFLOW_MANAGEMENT.md) for complete details
+
 ### **Performance Tuning:**
 - **Image Generation**: ~30 seconds average
 - **Video Generation**: 2-10 minutes (15-minute timeout)
@@ -439,6 +462,7 @@ discomfy/
 │   ├── flux_krea_lora.json    # Enhanced Flux Krea model
 │   ├── dype-flux-krea-lora.json # DyPE 4K model
 │   ├── ZITURBO1.json          # ZI Turbo fast generation
+│   ├── qwen_image_2512_lora.json # Qwen Image 2512 with hi-res fix
 │   ├── flux_kontext_edit.json # Flux Kontext editing
 │   ├── qwen_image_edit.json   # Qwen 2.5 VL fast editing (1 image)
 │   ├── qwen_image_edit_2.json # Qwen 2.5 VL multi-image (2 images)
@@ -536,7 +560,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*DisComfy v2.1.2 - The Professional Discord ComfyUI Bot*
+*DisComfy v2.2.0 - The Professional Discord ComfyUI Bot*
 
 ---
 

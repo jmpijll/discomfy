@@ -1,6 +1,6 @@
-# DisComfy v2.0 Usage Examples
+# DisComfy Usage Examples
 
-**Date:** November 2025
+**Date:** February 2026
 
 ---
 
@@ -29,7 +29,7 @@ python bot.py
 ```
 
 The bot will show an interactive setup view where you can:
-- Select model (Flux, Flux Krea, HiDream)
+- Select model (Flux, Flux Krea, DyPE Flux Krea, HiDream, ZI Turbo, Qwen Image 2512)
 - Choose LoRA
 - Adjust settings (width, height, steps, CFG)
 - Generate with selected parameters

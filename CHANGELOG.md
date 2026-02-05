@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.2.0] - 2026-02-05
+
+### Added
+- **Qwen Image 2512 model**: New text-to-image model with built-in hi-res fix (1.5x latent upscale) and LoRA support
+- **Workflow enable/disable**: Control which models are available via environment variables (`WORKFLOW_<NAME>_ENABLED`)
+- Comprehensive workflow management documentation (`docs/WORKFLOW_MANAGEMENT.md`)
+- Test suite for workflow enable/disable functionality
+
+### Changed
+- **KSamplerUpdater**: Now supports dual KSampler workflows (hi-res fix). Refinement passes (denoise < 1.0) preserve their original steps/cfg while still receiving a consistent seed
+- **CFG validation**: Lowered minimum from 1.0 to 0.1 to support models like Qwen Image 2512 (CFG 0.8)
+- **LoRA filtering**: Qwen Image 2512 LoRAs are now properly filtered by model type
+- Enhanced `config/loader.py` to support workflow enable/disable via environment variables
+- Updated default workflows in `config/migration.py` to include ZI Turbo and Qwen Image 2512 (fixes Docker fallback defaults)
+
+---
+
 ## [2.1.2] - 2025-12-17
 
 ### ⚡ New Feature: ZI Turbo Model

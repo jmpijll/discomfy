@@ -4,9 +4,16 @@ This document tracks known issues and limitations in DisComfy.
 
 ---
 
-## 🎉 No Known Issues!
+## Known Limitations
 
-**Current Status**: All previously reported issues have been resolved!
+### Progress Bar Accuracy for Multi-Sampler Workflows
+**Status**: ⚠️ **Known Limitation**
+
+Workflows with multiple KSampler nodes (such as Qwen Image 2512 with its hi-res fix pass) may show progress percentage that resets or jumps during generation. This is because ComfyUI only provides per-node step progress, not workflow-level completion percentage. The progress bar remains accurate within each sampling pass but may appear to reset between passes.
+
+**Workaround**: The generation is progressing normally even if the percentage fluctuates. The final result will be delivered correctly.
+
+---
 
 ### Recently Resolved Issues
 
@@ -14,8 +21,6 @@ This document tracks known issues and limitations in DisComfy.
 **Status**: ✅ **RESOLVED** in v1.4.0 (October 31, 2025)
 
 The concurrent generation hanging bug has been completely fixed. Multiple users can now generate images simultaneously without any issues.
-
-**Solution**: WebSocket initialization moved to bot startup instead of per-generation. See [RELEASE_NOTES_v1.4.0.md](RELEASE_NOTES_v1.4.0.md) for details.
 
 ---
 
@@ -36,5 +41,5 @@ If you encounter a bug or issue:
 
 ## Notes
 
-Last Updated: October 31, 2025  
-Current Version: v1.4.0
+Last Updated: February 5, 2026  
+Current Version: v2.2.0

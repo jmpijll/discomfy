@@ -49,11 +49,18 @@ class ModelSelectMenu(Select):
                 default=(current_model == "hidream")
             ),
             SelectOption(
-                label="ZI Turbo ⚡ NEW",
+                label="ZI Turbo ⚡",
                 description="Ultra-fast turbo generation",
                 value="ziturbo",
                 emoji="🔥",
                 default=(current_model == "ziturbo")
+            ),
+            SelectOption(
+                label="Qwen Image 2512 🆕 NEW",
+                description="Qwen 2512 with hi-res fix & LoRA",
+                value="qwen_image_2512",
+                emoji="🧠",
+                default=(current_model == "qwen_image_2512")
             ),
         ]
         
@@ -131,6 +138,14 @@ class ModelSelectMenu(Select):
                 view.steps = 10
                 view.cfg = 1.0
                 view.negative_prompt = "blurry ugly bad"
+                view.batch_size = 1
+                view.dype_exponent = 2.0
+            elif selected_model == "qwen_image_2512":
+                view.width = 1296
+                view.height = 1728
+                view.steps = 8
+                view.cfg = 0.8
+                view.negative_prompt = ""
                 view.batch_size = 1
                 view.dype_exponent = 2.0
             

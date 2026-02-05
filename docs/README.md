@@ -14,6 +14,10 @@ Welcome to the DisComfy documentation! This directory contains comprehensive gui
 - **[Unraid Setup](UNRAID_SETUP.md)** - Deploy DisComfy on Unraid
 - **[README v2](README_V2.md)** - Quick start guide for v2.0
 
+### Configuration & Management
+
+- **[Workflow Management](WORKFLOW_MANAGEMENT.md)** - Enable/disable models via environment variables
+
 ### Technical Documentation
 
 - **[API Documentation](API.md)** - Complete API reference for developers
@@ -22,7 +26,7 @@ Welcome to the DisComfy documentation! This directory contains comprehensive gui
 ### Release Notes
 
 - **[v1.4.0 Release Notes](RELEASE_NOTES_v1.4.0.md)** - Previous release information
-- **[v2.0.0 Release Notes](../RELEASE_NOTES.md)** - Current release (in root)
+- **[v2.2.0 Release Notes](../RELEASE_NOTES.md)** - Current release (in root)
 
 ## 🚀 Quick Links
 
@@ -53,5 +57,5 @@ When adding documentation:
 
 ---
 
-**DisComfy v2.0.0** - Advanced Discord AI Art Bot
+**DisComfy v2.2.0** - Advanced Discord AI Art Bot
 

@@ -138,6 +138,8 @@ class CompleteSetupView(View):
                 workflow_name = "hidream_lora"  # hidream_lora.json
             elif self.model == "ziturbo":
                 workflow_name = "ziturbo"  # ZITURBO1.json
+            elif self.model == "qwen_image_2512":
+                workflow_name = "qwen_image_2512_lora"  # qwen_image_2512_lora.json
 
             if not workflow_name:
                 await interaction.followup.send(
@@ -152,7 +154,8 @@ class CompleteSetupView(View):
                 "flux_krea": "Flux Krea ✨",
                 "dype_flux_krea": "DyPE Flux Krea 🚀",
                 "hidream": "HiDream",
-                "ziturbo": "ZI Turbo ⚡ NEW"
+                "ziturbo": "ZI Turbo ⚡",
+                "qwen_image_2512": "Qwen Image 2512 🧠"
             }.get(self.model, self.model)
             
             progress_embed = discord.Embed(
@@ -248,7 +251,8 @@ class CompleteSetupView(View):
                 "flux_krea": "Flux Krea ✨",
                 "dype_flux_krea": "DyPE Flux Krea 🚀",
                 "hidream": "HiDream",
-                "ziturbo": "ZI Turbo ⚡ NEW"
+                "ziturbo": "ZI Turbo ⚡",
+                "qwen_image_2512": "Qwen Image 2512 🧠"
             }.get(selected_model, selected_model)
             
             updated_embed = discord.Embed(

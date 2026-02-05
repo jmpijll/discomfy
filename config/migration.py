@@ -61,6 +61,32 @@ def get_default_workflows() -> Dict[str, Any]:
             "model_type": "flux",
             "enabled": True,
             "supports_lora": False
+        },
+        "ziturbo": {
+            "name": "ZI Turbo",
+            "description": "Ultra-fast turbo generation with custom LoRA support",
+            "file": "ZITURBO1.json",
+            "type": "image",
+            "model_type": "ziturbo",
+            "enabled": True,
+            "supports_lora": True,
+            "default_width": 1536,
+            "default_height": 1048,
+            "default_steps": 10,
+            "default_cfg": 1.0
+        },
+        "qwen_image_2512_lora": {
+            "name": "Qwen Image 2512",
+            "description": "Qwen 2512 text-to-image model with built-in hi-res fix and LoRA support",
+            "file": "qwen_image_2512_lora.json",
+            "type": "image",
+            "model_type": "qwen_image_2512",
+            "enabled": True,
+            "supports_lora": True,
+            "default_width": 1296,
+            "default_height": 1728,
+            "default_steps": 8,
+            "default_cfg": 0.8
         }
     }
 

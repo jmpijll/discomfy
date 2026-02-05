@@ -155,9 +155,17 @@ class ImageGenerator(BaseGenerator):
             if model_type.lower() == 'hidream':
                 # Only include LoRAs with 'hidream' in the name
                 filtered = [lora for lora in loras if 'hidream' in lora['filename'].lower()]
+            elif model_type.lower() == 'qwen_image_2512':
+                # Only include LoRAs with 'qwen_image_2512' in the name
+                filtered = [lora for lora in loras if 'qwen_image_2512' in lora['filename'].lower()]
+
+                # Fallback: if no qwen-specific LoRAs found, allow all non-hidream LoRAs
+                if not filtered and loras:
+                    self.logger.warning(f"No qwen_image_2512-specific LoRAs found, allowing all non-hidream LoRAs")
+                    filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
             elif model_type.lower() in ['flux', 'flux_krea', 'dype_flux_krea', 'ziturbo']:
-                # Include LoRAs that don't have 'hidream' in the name
-                filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower()]
+                # Include LoRAs that don't have 'hidream' or 'qwen_image_2512' in the name
+                filtered = [lora for lora in loras if 'hidream' not in lora['filename'].lower() and 'qwen_image_2512' not in lora['filename'].lower()]
 
                 # Fallback: if no flux-specific LoRAs found, allow all LoRAs
                 if not filtered and loras:

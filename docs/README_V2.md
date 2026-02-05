@@ -1,8 +1,8 @@
-# DisComfy v2.0
+# DisComfy
 
 **Discord bot for ComfyUI image and video generation**
 
-**Version:** 2.0 (Refactored Architecture)  
+**Version:** 2.2.0  
 **Status:** Production Ready ✅
 
 ---
@@ -38,7 +38,7 @@ python bot.py
 
 ## Features
 
-- ✅ Image generation with multiple models (Flux, Flux Krea, HiDream)
+- ✅ Image generation with multiple models (Flux, Flux Krea, DyPE Flux Krea, HiDream, ZI Turbo, Qwen Image 2512)
 - ✅ LoRA support for style customization
 - ✅ Image editing (Flux Kontext, Qwen)
 - ✅ Image upscaling

@@ -14,6 +14,23 @@ DisComfy is a Discord bot that integrates with ComfyUI to provide AI image and v
 - Multi-workflow support (Flux, Flux Krea, DyPE Flux Krea, HiDream, Qwen, etc.)
 - **NEW in v2.1**: Ultra high-resolution support (up to 4096x4096) with DyPE technology
 
+## Documentation Guidelines
+
+**IMPORTANT: Do not create random markdown files in the repository root.**
+
+- **Only create files in `docs/` folder** - All documentation belongs in the docs directory
+- **Update existing docs** - Prefer updating existing README.md, CHANGELOG.md, etc. rather than creating new files
+- **No summary files** - Do not create "FEATURE_*.md" or "SUMMARY_*.md" files unless explicitly requested
+- **No example files in root** - Example configs like `.env.*.example` clutter the root; use `docs/` or inline documentation
+- **This is a public-facing repository** - Keep the root directory clean and professional
+
+**Acceptable documentation locations:**
+- `README.md` - Main project documentation
+- `CHANGELOG.md` - Version history
+- `RELEASE_NOTES.md` - Release information
+- `docs/` - All other documentation (guides, examples, references)
+- Code comments and docstrings
+
 ## Development Commands
 
 ### Running the Bot

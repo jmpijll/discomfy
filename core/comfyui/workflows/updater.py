@@ -27,7 +27,7 @@ class WorkflowParameters(BaseModel):
     width: int = Field(default=1024, ge=512, le=4096, description="Image width")
     height: int = Field(default=1024, ge=512, le=4096, description="Image height")
     steps: int = Field(default=50, ge=1, le=150, description="Sampling steps")
-    cfg: float = Field(default=5.0, ge=1.0, le=20.0, description="CFG scale")
+    cfg: float = Field(default=5.0, ge=0.1, le=20.0, description="CFG scale")
     seed: Optional[int] = Field(default=None, ge=0, description="Random seed")
     batch_size: int = Field(default=1, ge=1, le=10, description="Batch size")
     lora_name: Optional[str] = Field(default=None, description="LoRA name")
@@ -73,7 +73,13 @@ class NodeUpdater(ABC):
 
 
 class KSamplerUpdater(NodeUpdater):
-    """Updates KSampler nodes (HiDream workflows)."""
+    """Updates KSampler nodes.
+    
+    Handles both primary samplers and hi-res fix refinement passes.
+    Primary samplers (denoise == 1.0 or missing) get full parameter updates.
+    Refinement samplers (denoise < 1.0) only get a new seed for reproducibility,
+    preserving their original steps, cfg, and denoise values.
+    """
     
     def can_update(self, node: dict) -> bool:
         """Check if node is a KSampler."""
@@ -84,9 +90,17 @@ class KSamplerUpdater(NodeUpdater):
         if 'inputs' not in node:
             node['inputs'] = {}
         
+        # Check if this is a refinement pass (hi-res fix) by looking at denoise
+        denoise = node['inputs'].get('denoise', 1.0)
+        is_refinement = denoise < 1.0
+        
+        # Always update seed for reproducibility
         node['inputs']['seed'] = params.seed or random.randint(0, 2**32 - 1)
-        node['inputs']['steps'] = params.steps
-        node['inputs']['cfg'] = params.cfg
+        
+        # Only update steps/cfg on the primary sampler, not refinement passes
+        if not is_refinement:
+            node['inputs']['steps'] = params.steps
+            node['inputs']['cfg'] = params.cfg
         
         # Update positive/negative prompts via connected nodes
         positive_input = node['inputs'].get('positive')

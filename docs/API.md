@@ -1,7 +1,7 @@
-# DisComfy v2.0 API Documentation
+# DisComfy API Documentation
 
-**Version:** 2.0  
-**Date:** November 2025
+**Version:** 2.2.0  
+**Date:** February 2026
 
 ---
 

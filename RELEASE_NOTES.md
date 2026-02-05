@@ -1,5 +1,38 @@
 # DisComfy Release Notes
 
+## v2.2.0 - Qwen Image 2512 Model + Workflow Management
+
+**Release Date:** February 5, 2026
+**Version:** 2.2.0
+
+### 🧠 What's New
+
+#### Qwen Image 2512 Model
+- **New Text-to-Image Model**: Qwen Image 2512 with built-in hi-res fix for enhanced detail
+- **Hi-Res Fix Pipeline**: 1.5x latent upscale with a dedicated 4-step refinement pass
+- **Portrait Optimized**: Default resolution 1296x1728 (3:4 ratio)
+- **Fast Generation**: Only 8 steps at CFG 0.8 for the initial pass
+- **Full LoRA Support**: Compatible with Qwen Image 2512 LoRAs
+
+#### Workflow Enable/Disable System
+- **Environment Variable Control**: Enable or disable any model via `WORKFLOW_<NAME>_ENABLED=true/false`
+- **Default All Enabled**: All workflows are enabled by default, no changes needed for existing users
+- **Easy Retirement**: Disable old models without removing files or modifying code
+- **Docker Ready**: Pass environment variables directly in docker-compose or docker run
+
+#### Technical Improvements
+- **Dual KSampler Support**: `KSamplerUpdater` now correctly handles workflows with multiple sampling passes (hi-res fix). Refinement passes (denoise < 1.0) preserve their original steps and CFG while receiving a consistent seed
+- **Extended CFG Range**: Lowered minimum from 1.0 to 0.1 to support low-CFG models like Qwen Image 2512
+- **LoRA Filtering**: Model-specific LoRA filtering for Qwen Image 2512
+- **Docker Defaults**: Updated default workflows in migration fallback to include ZI Turbo and Qwen Image 2512
+
+#### Documentation
+- New workflow management guide (`docs/WORKFLOW_MANAGEMENT.md`)
+- Updated README with new model and workflow management features
+- Updated KNOWN_ISSUES with progress tracking limitation documentation
+
+---
+
 ## v2.1.2 - ZI Turbo Model
 
 **Release Date:** December 17, 2025

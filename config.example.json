@@ -98,6 +98,19 @@
       "default_height": 1048,
       "default_steps": 10,
       "default_cfg": 1.0
+    },
+    "qwen_image_2512_lora": {
+      "name": "Qwen Image 2512",
+      "description": "Qwen 2512 text-to-image model with built-in hi-res fix and LoRA support",
+      "file": "qwen_image_2512_lora.json",
+      "type": "image",
+      "model_type": "qwen_image_2512",
+      "enabled": true,
+      "supports_lora": true,
+      "default_width": 1296,
+      "default_height": 1728,
+      "default_steps": 8,
+      "default_cfg": 0.8
     }
   },
   "logging": {

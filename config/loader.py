@@ -108,6 +108,20 @@ class ConfigManager:
         if os.getenv('COMFYUI_API_KEY'):
             config_data['comfyui']['api_key'] = os.getenv('COMFYUI_API_KEY')
         
+        # Workflow enable/disable overrides
+        # Format: WORKFLOW_<WORKFLOW_NAME>_ENABLED=true/false
+        if config_data.get('workflows'):
+            for workflow_name in config_data['workflows'].keys():
+                # Convert workflow name to env var format (e.g., flux_lora -> FLUX_LORA)
+                env_var_name = f"WORKFLOW_{workflow_name.upper()}_ENABLED"
+                env_value = os.getenv(env_var_name)
+                
+                if env_value is not None:
+                    # Convert string to boolean
+                    enabled = env_value.lower() in ('true', '1', 'yes', 'on')
+                    config_data['workflows'][workflow_name]['enabled'] = enabled
+                    logger.info(f"Workflow '{workflow_name}' {'enabled' if enabled else 'disabled'} via environment variable {env_var_name}")
+        
         return config_data
     
     def _configure_logging(self) -> None:
