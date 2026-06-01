@@ -56,9 +56,11 @@ def _wire_default_plugins() -> None:
     """
     from core.modalities.image_t2i.plugin import ImageT2IPlugin
     from core.modalities.image_upscale.plugin import ImageUpscalePlugin
+    from core.modalities.video.plugin import VideoPlugin
 
     default_registry.register(ImageT2IPlugin())
     default_registry.register(ImageUpscalePlugin())
+    default_registry.register(VideoPlugin())
 
 
 _wire_default_plugins()

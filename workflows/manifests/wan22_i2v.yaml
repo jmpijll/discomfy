@@ -1,0 +1,167 @@
+schema_version: 1
+id: wan22_i2v
+name: "WAN 2.2 i2v (HIGH+LOW)"
+description: |
+  WAN 2.2 image-to-video with the HIGH+LOW noise UNET pair. The HIGH-noise
+  UNET handles the early sampling timesteps (structural motion); the LOW-noise
+  UNET refines fine detail in a second KSampler pass. Each UNET is stacked
+  with its matching SVI_v2_PRO LoRA. Uses the canonical core ComfyUI
+  WanImageToVideo node for i2v latent assembly and VHS_VideoCombine for MP4
+  output at 16 fps. This manifest is the first exercise of ADR-0001's
+  multi-UNET pattern: two slots (model_high / model_low) target two
+  independent UNETLoader nodes.
+modality: video
+workflow_file: workflows/wan22_i2v.json
+
+requires:
+  packs:
+    - custom_nodes.comfyui-videohelpersuite
+  unets:
+    - wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8H.safetensors
+    - wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8L.safetensors
+  vaes:
+    - wan_2.1_vae.safetensors
+  clips:
+    - umt5_xxl_fp8_e4m3fn_scaled.safetensors
+  loras:
+    - SVI_v2_PRO_Wan2.2-I2V-A14B_HIGH_lora_rank_128_fp16.safetensors
+    - SVI_v2_PRO_Wan2.2-I2V-A14B_LOW_lora_rank_128_fp16.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "8", field: "text" }
+    ui:
+      hint: long_text
+      label: "Prompt"
+      placeholder: "camera slowly pans right across..."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "9", field: "text" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: "low quality, blurry, distorted, watermark, static"
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: init_image
+    type: image
+    role: init_image
+    target: { node: "7", field: "image" }
+    ui:
+      hint: image
+      label: "Source image"
+      required: true
+      attachment_position: 1
+    validation:
+      accepts: [image/png, image/jpeg, image/webp]
+
+  - name: model_high
+    type: enum_static
+    role: model_high
+    target: { node: "1", field: "unet_name" }
+    options:
+      - wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8H.safetensors
+    ui:
+      hint: select_static
+      label: "HIGH-noise UNET"
+      default: wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8H.safetensors
+      required: true
+
+  - name: model_low
+    type: enum_static
+    role: model_low
+    target: { node: "2", field: "unet_name" }
+    options:
+      - wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8L.safetensors
+    ui:
+      hint: select_static
+      label: "LOW-noise UNET"
+      default: wan22EnhancedNSFWCameraPrompt_nsfwFASTMOVEV2FP8L.safetensors
+      required: true
+
+  - name: frame_count
+    type: int
+    role: batch_size
+    target: { node: "10", field: "length" }
+    ui:
+      hint: number
+      label: "Frame count"
+      default: 17
+      step: 4
+      required: false
+    validation:
+      min: 8
+      max: 81
+
+  - name: seed
+    type: seed
+    role: seed
+    targets:
+      - { node: "11", field: "seed" }
+      - { node: "12", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: cfg
+    type: float
+    role: cfg
+    targets:
+      - { node: "11", field: "cfg" }
+      - { node: "12", field: "cfg" }
+    ui:
+      hint: number
+      label: "CFG scale"
+      default: 6.0
+      step: 0.5
+      required: false
+    validation:
+      min: 1.0
+      max: 15.0
+
+  - name: steps_high
+    type: int
+    role: steps
+    target: { node: "11", field: "steps" }
+    ui:
+      hint: number
+      label: "Steps (HIGH pass)"
+      default: 4
+      step: 1
+      required: false
+    validation:
+      min: 2
+      max: 12
+
+  - name: steps_low
+    type: int
+    role: steps
+    target: { node: "12", field: "steps" }
+    ui:
+      hint: number
+      label: "Steps (LOW pass)"
+      default: 4
+      step: 1
+      required: false
+    validation:
+      min: 2
+      max: 12
+
+outputs:
+  - role: output_video
+    node: "14"
+    media: video/mp4
+
+actions: []
