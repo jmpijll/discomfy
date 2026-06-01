@@ -53,9 +53,10 @@ from core.manifest import (  # noqa: E402
     apply_slots,
     load_manifest_directory,
 )
+from core.manifest.roles import Role  # noqa: E402
+from core.manifest.schema import SlotType  # noqa: E402
 from core.modalities import default_registry  # noqa: E402
 from core.run import Output, Run, RunStatus  # noqa: E402
-from core.manifest.roles import Role  # noqa: E402
 
 DEFAULT_COMFYUI_URL = "http://172.27.1.165:8188"
 DEFAULT_MANIFESTS_DIR = REPO_ROOT / "workflows" / "manifests"
@@ -197,6 +198,18 @@ async def run_smoke(
         logger.info("Manifest '%s' requires satisfied.", manifest_id)
 
         try:
+            slot_overrides = await _upload_image_slots(
+                http=http,
+                manifest=manifest,
+                slot_overrides=slot_overrides,
+                logger=logger,
+            )
+        except SmokeError:
+            raise
+        except Exception as e:
+            raise SmokeError(f"image slot upload failed: {e}") from e
+
+        try:
             coerced = await plugin.validate_slot_values(manifest, slot_overrides)
         except Exception as e:
             raise SmokeError(f"slot validation failed: {e}") from e
@@ -306,6 +319,67 @@ async def run_smoke(
             latency_seconds=latency,
             run=run,
         )
+
+
+async def _upload_image_slots(
+    *,
+    http: ComfyHTTPClient,
+    manifest: Manifest,
+    slot_overrides: dict[str, Any],
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    """Resolve IMAGE-type slot values that look like local file paths.
+
+    For each Manifest slot whose ``type`` is ``IMAGE``, if the user
+    supplied a string that points to an existing file, upload it to
+    ComfyUI's ``/upload/image`` endpoint and replace the slot value
+    with the server-side filename returned in the response. Values
+    that are not file paths (e.g. already-uploaded filenames) pass
+    through untouched.
+
+    This is what makes ``--slot source_image=/path/to/file.png`` work
+    against any manifest that exposes an IMAGE slot, without the
+    harness needing to know which manifests have such slots.
+    """
+    slots = manifest.slots_by_name()
+    updated = dict(slot_overrides)
+    for name, value in list(slot_overrides.items()):
+        slot = slots.get(name)
+        if slot is None or slot.type != SlotType.IMAGE:
+            continue
+        if not isinstance(value, str):
+            continue
+        candidate = Path(value)
+        if not candidate.is_file():
+            continue
+        data = candidate.read_bytes()
+        ext = candidate.suffix.lower()
+        content_type = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+        }.get(ext, "application/octet-stream")
+        try:
+            resp = await http.upload_image(
+                candidate.name,
+                data,
+                content_type=content_type,
+            )
+        except ComfyHTTPError as e:
+            raise SmokeError(
+                f"upload of slot '{name}' file {candidate} failed: {e}"
+            ) from e
+        server_name = resp.get("name") or candidate.name
+        updated[name] = server_name
+        logger.info(
+            "uploaded slot '%s' file %s as %s (%d bytes)",
+            name,
+            candidate,
+            server_name,
+            len(data),
+        )
+    return updated
 
 
 async def _collect_outputs(

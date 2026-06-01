@@ -1,0 +1,52 @@
+schema_version: 1
+id: image_upscale_latent
+name: "Upscale 2x (latent)"
+description: |
+  Model-free 2x upscale. Encodes the source PNG with the Qwen-Image VAE,
+  scales the latent with LatentUpscaleBy (bislerp), and decodes back to
+  pixels. Always available - it depends only on the Qwen-Image VAE that
+  the Slice 1 manifest already requires; no UpscaleModelLoader / .pth
+  files needed.
+modality: image_upscale
+workflow_file: workflows/upscale_latent.json
+
+requires:
+  vaes:
+    - qwen_image_vae.safetensors
+
+slots:
+  - name: source_image
+    type: image
+    role: source_image
+    target: { node: "1", field: "image" }
+    ui:
+      hint: image
+      label: "Source image"
+      attachment_position: 1
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: scale_by
+    type: float
+    role: scale_by
+    target: { node: "4", field: "scale_by" }
+    ui:
+      hint: number
+      label: "Scale factor"
+      default: 2.0
+      step: 0.5
+      required: false
+    validation:
+      min: 1.5
+      max: 4.0
+
+outputs:
+  - role: output_image
+    node: "6"
+    media: image/png
+
+actions: []

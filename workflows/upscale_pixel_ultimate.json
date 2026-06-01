@@ -1,0 +1,52 @@
+{
+  "1": {
+    "inputs": {
+      "image": "placeholder.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Source Image"
+    }
+  },
+  "2": {
+    "inputs": {
+      "model_name": "4x_foolhardy_Remacri.pth"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "Load Upscale Model"
+    }
+  },
+  "3": {
+    "inputs": {
+      "upscale_model": ["2", 0],
+      "image": ["1", 0]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "Upscale Image With Model"
+    }
+  },
+  "4": {
+    "inputs": {
+      "image": ["3", 0],
+      "upscale_method": "lanczos",
+      "scale_by": 0.5
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "Image Scale By (post-model rescale)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "filename_prefix": "upscale_pixel",
+      "images": ["4", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

@@ -17,10 +17,12 @@ from core.modalities.base import (
     SlotValues,
 )
 from core.modalities.image_t2i.plugin import ImageT2IPlugin
+from core.modalities.image_upscale.plugin import ImageUpscalePlugin
 from core.modalities.registry import ModalityRegistry, default_registry
 
 __all__ = [
     "ImageT2IPlugin",
+    "ImageUpscalePlugin",
     "ModalityPlugin",
     "ModalityRegistry",
     "ProgressMapper",
