@@ -26,7 +26,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+/MANIFEST
 
 # Virtual environments
 venv/
@@ -81,6 +81,7 @@ htmlcov/
 # Testing and development
 test_*.py
 !tests/test_*.py
+!tests/integration/test_*.py
 pytest.ini
 
 # Development documentation (archived)

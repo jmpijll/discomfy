@@ -84,7 +84,13 @@ async def main():
 
         logger.info("Registered v2 command handlers")
 
-        
+        from bot.commands import v3_image as v3_image_cmd
+        if v3_image_cmd.is_v3_enabled():
+            logger.info("DISCOMFY_V3=1 detected; registering v3 /image command")
+            v3_image_cmd.register(bot)
+        else:
+            logger.info("DISCOMFY_V3 flag not set; v3 commands NOT registered")
+
         logger.info("🤖 Bot is starting up...")
         
         # Run the bot
