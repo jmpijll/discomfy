@@ -1,0 +1,62 @@
+schema_version: 1
+id: audio_tts_fish_voiceclone
+name: "Fish-Speech S2 Voice Clone (TTS)"
+description: |
+  Voice-cloning text-to-speech via Fish-Speech S2-Pro. Attach a 5-30s
+  reference clip (WAV / MP3); the model speaks the supplied text in
+  that voice. Reference audio uploads use ComfyUI's /upload/image
+  endpoint per ADR-0007 (the v3 HTTP client's upload_audio alias).
+modality: audio_tts
+workflow_file: workflows/audio_tts_fish_voiceclone.json
+
+requires:
+  packs:
+    - custom_nodes.ComfyUI-FishAudioS2
+
+slots:
+  - name: text
+    type: text
+    role: prompt_positive
+    target: { node: "1", field: "text" }
+    ui:
+      hint: long_text
+      label: "Text"
+      placeholder: "Hello! [excited] This is my cloned voice."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: voice_reference
+    type: audio
+    role: reference_audio
+    target: { node: "10", field: "audio" }
+    ui:
+      hint: audio
+      label: "Reference voice clip"
+      placeholder: "5-30s of clean speech is best"
+      required: true
+      attachment_position: 1
+    validation:
+      accepts:
+        - audio/wav
+        - audio/mpeg
+        - audio/x-wav
+        - audio/mp3
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "1", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+outputs:
+  - role: output_audio
+    node: "2"
+    media: audio/mpeg
+
+actions: []

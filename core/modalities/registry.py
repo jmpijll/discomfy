@@ -51,9 +51,10 @@ def _wire_default_plugins() -> None:
     """Register every Plugin that ships in v3.
 
     Imported here to avoid import cycles between Plugin modules and the
-    registry. Slice 1 ships only ``image_t2i``; later slices append to
+    registry. Each new Modality slice appends one ``register`` call to
     this function.
     """
+    from core.modalities.audio_tts.plugin import AudioTTSPlugin
     from core.modalities.image_t2i.plugin import ImageT2IPlugin
     from core.modalities.image_upscale.plugin import ImageUpscalePlugin
     from core.modalities.video.plugin import VideoPlugin
@@ -61,6 +62,7 @@ def _wire_default_plugins() -> None:
     default_registry.register(ImageT2IPlugin())
     default_registry.register(ImageUpscalePlugin())
     default_registry.register(VideoPlugin())
+    default_registry.register(AudioTTSPlugin())
 
 
 _wire_default_plugins()
