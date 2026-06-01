@@ -48,6 +48,7 @@ logs/
 bot_*.log
 
 # Output files
+output/
 outputs/
 *.png
 *.jpg
@@ -59,7 +60,7 @@ outputs/
 *.mov
 
 # OS
-.DS_Store
+**/.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
@@ -87,8 +88,12 @@ docs/archive/
 
 # Wiki documentation (maintained separately in wiki repo)
 wiki-docs/
+wiki-temp/
 publish-wiki.ps1
 WIKI_SETUP.md
+
+# Cursor plans (live in user dir)
+.cursor/
 
 # Temporary merge/dev documentation
 MERGE_READY.md
