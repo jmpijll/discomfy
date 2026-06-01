@@ -1,0 +1,120 @@
+schema_version: 1
+id: qwen_image_edit_2511_1image
+name: "Qwen-Image-Edit 2511 (1 image)"
+description: |
+  Qwen-Image-Edit 2511 with the 4-step Lightning LoRA for fast (~10s)
+  natural-language edits on a single source image. The graph wires
+  ``UNETLoader`` -> ``LoraLoaderModelOnly`` (Lightning) ->
+  ``LoraLoaderModelOnly`` (user-stack, default strength 0) ->
+  ``ModelSamplingAuraFlow`` -> ``CFGNorm`` -> ``KSampler`` (euler /
+  simple, 4 steps, cfg=1). ``LoadImage`` -> ``ImageScaleToTotalPixels``
+  (1.5 MP, lanczos) feeds both ``VAEEncode`` (for the KSampler's
+  latent) and the ``image1`` input of two ``TextEncodeQwenImageEditPlus``
+  nodes (positive instruction + empty negative). ``VAEDecode`` ->
+  ``SaveImage`` emits one PNG.
+modality: image_edit
+workflow_file: workflows/qwen_image_edit_2511_1image.json
+
+requires:
+  unets:
+    - qwen_image_edit_2511_fp8mixed.safetensors
+  vaes:
+    - qwen_image_vae.safetensors
+  clips:
+    - qwen_2.5_vl_7b_fp8_scaled.safetensors
+  loras:
+    - Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+    - QWEN_EDIT_ACTION_V1.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "12", field: "prompt" }
+    ui:
+      hint: long_text
+      label: "Edit instruction"
+      placeholder: "Replace the background with a snowy mountain at sunset"
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "11", field: "prompt" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: ""
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: image_1
+    type: image
+    role: source_image
+    target: { node: "8", field: "image" }
+    ui:
+      hint: image
+      label: "Source image"
+      attachment_position: 1
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "13", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: lora
+    type: enum_dynamic
+    role: lora
+    target: { node: "5", field: "lora_name" }
+    options_from: comfyui.loras
+    ui:
+      hint: select
+      label: "User LoRA"
+      default: QWEN_EDIT_ACTION_V1.safetensors
+      required: false
+
+  - name: lora_strength
+    type: float
+    role: lora_strength
+    target: { node: "5", field: "strength_model" }
+    ui:
+      hint: number
+      label: "User LoRA strength"
+      default: 0.0
+      step: 0.1
+      required: false
+    validation:
+      min: 0.0
+      max: 2.0
+
+outputs:
+  - role: output_image
+    node: "15"
+    media: image/png
+
+actions:
+  - id: upscale
+    label: "Upscale 2x"
+    target_workflow: image_upscale_latent
+    map:
+      - { from_output: output_image, to_slot: source_image }
+  - id: animate
+    label: "Animate"
+    target_workflow: wan22_i2v
+    map:
+      - { from_output: output_image, to_slot: init_image }
