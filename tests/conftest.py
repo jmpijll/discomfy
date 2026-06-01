@@ -13,6 +13,14 @@ from core.comfyui.client import ComfyUIClient
 from utils.rate_limit import RateLimiter, RateLimitConfig
 
 
+def pytest_configure(config):
+    """Register custom markers used by the v3 integration suite."""
+    config.addinivalue_line(
+        "markers",
+        "integration: live ComfyUI integration tests; require DISCOMFY_INTEGRATION=1",
+    )
+
+
 @pytest.fixture
 def mock_config():
     """Create a mock configuration for testing."""
