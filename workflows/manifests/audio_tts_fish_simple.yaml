@@ -1,0 +1,46 @@
+schema_version: 1
+id: audio_tts_fish_simple
+name: "Fish-Speech S2 (TTS)"
+description: |
+  Single-pass text-to-speech via the Fish-Speech S2-Pro built-in voice.
+  Drop a sentence in, get an MP3 back. Use [excited], [whisper], [pause]
+  and similar inline tags inside the text for emotion control. ADR-0007
+  is the audio Modality anchor; this is the tracer-bullet manifest for
+  the audio_tts Plugin (Slice 7 / issue #9).
+modality: audio_tts
+workflow_file: workflows/audio_tts_fish_simple.json
+
+requires:
+  packs:
+    - custom_nodes.ComfyUI-FishAudioS2
+
+slots:
+  - name: text
+    type: text
+    role: prompt_positive
+    target: { node: "1", field: "text" }
+    ui:
+      hint: long_text
+      label: "Text"
+      placeholder: "Hello! [excited] This is Fish-Speech."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "1", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+outputs:
+  - role: output_audio
+    node: "2"
+    media: audio/mpeg
+
+actions: []

@@ -220,6 +220,18 @@ async def run_smoke(
             raise SmokeError(f"image slot upload failed: {e}") from e
 
         try:
+            slot_overrides = await _resolve_audio_inputs(
+                http=http,
+                manifest=manifest,
+                slot_overrides=slot_overrides,
+                logger=logger,
+            )
+        except SmokeError:
+            raise
+        except Exception as e:
+            raise SmokeError(f"audio upload preprocess failed: {e}") from e
+
+        try:
             coerced = await plugin.validate_slot_values(manifest, slot_overrides)
         except Exception as e:
             raise SmokeError(f"slot validation failed: {e}") from e
@@ -465,15 +477,90 @@ async def _collect_outputs(
     return collected
 
 
+_AUDIO_EXT_MIME = {
+    ".wav": "audio/wav",
+    ".wave": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".oga": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".opus": "audio/opus",
+}
+
+
+async def _resolve_audio_inputs(
+    *,
+    http: "ComfyHTTPClient",
+    manifest: Manifest,
+    slot_overrides: dict[str, Any],
+    logger: logging.Logger,
+) -> dict[str, Any]:
+    """Upload any local path supplied for an AUDIO Slot, swap in the filename.
+
+    For each manifest Slot with ``type: audio``, a string value is
+    interpreted as a local filesystem path. The file is read, uploaded
+    via the v3 client's ``upload_audio`` (alias for ``/upload/image``
+    with audio mimes per ADR-0007), and the override is replaced with
+    the filename ComfyUI assigned. Already-uploaded names (no path
+    separator and no existing file) are passed through unchanged so
+    operators can reference inputs they previously uploaded.
+    """
+    slots = manifest.slots_by_name()
+    out: dict[str, Any] = dict(slot_overrides)
+    for name, raw in list(slot_overrides.items()):
+        slot = slots.get(name)
+        if slot is None or slot.type != SlotType.AUDIO:
+            continue
+        if not isinstance(raw, str):
+            continue
+        path = Path(raw).expanduser()
+        if not path.is_file():
+            if "/" not in raw and "\\" not in raw:
+                logger.info(
+                    "audio slot '%s' value %r looks like an existing ComfyUI input; using verbatim",
+                    name,
+                    raw,
+                )
+                continue
+            raise SmokeError(
+                f"audio slot '{name}' references missing file: {path}"
+            )
+        data = path.read_bytes()
+        ext = path.suffix.lower()
+        content_type = _AUDIO_EXT_MIME.get(ext, "application/octet-stream")
+        try:
+            resp = await http.upload_audio(
+                filename=path.name,
+                data=data,
+                content_type=content_type,
+            )
+        except ComfyHTTPError as e:
+            raise SmokeError(
+                f"upload_audio failed for slot '{name}' ({path}): {e}"
+            ) from e
+        uploaded = resp.get("name") or path.name
+        logger.info(
+            "uploaded audio slot '%s': %s -> %s (%d bytes)",
+            name,
+            path,
+            uploaded,
+            len(data),
+        )
+        out[name] = uploaded
+    return out
+
+
 def _candidate_buckets_for_media(media: str) -> list[str]:
     """Map a manifest MIME to ComfyUI history bucket keys, in priority order.
 
     Different ComfyUI nodes use different keys for the same output kind:
     SaveImage uses ``images``; the legacy VHS_VideoCombine custom node
     emits MP4 / WebM under ``gifs`` (historical naming) and newer builds
-    may also expose ``videos``. We try all plausible names per Modality
-    so the smoke harness does not need to know which node authored the
-    output.
+    may also expose ``videos``. Audio nodes commonly use ``audio``.
+    We try all plausible names per Modality so the smoke harness does
+    not need to know which node authored the output.
     """
     if media.startswith("image/"):
         return ["images"]

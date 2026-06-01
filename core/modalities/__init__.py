@@ -10,6 +10,7 @@ The :mod:`core.modalities.registry` module exposes a global
 ``ModalityRegistry`` instance so the bot can dispatch by Modality.
 """
 
+from core.modalities.audio_tts.plugin import AudioTTSPlugin
 from core.modalities.base import (
     ModalityPlugin,
     ProgressMapper,
@@ -21,6 +22,7 @@ from core.modalities.image_upscale.plugin import ImageUpscalePlugin
 from core.modalities.registry import ModalityRegistry, default_registry
 
 __all__ = [
+    "AudioTTSPlugin",
     "ImageT2IPlugin",
     "ImageUpscalePlugin",
     "ModalityPlugin",
