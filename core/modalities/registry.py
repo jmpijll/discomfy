@@ -54,6 +54,7 @@ def _wire_default_plugins() -> None:
     registry. Each new Modality slice appends one ``register`` call to
     this function.
     """
+    from core.modalities.audio_music.plugin import AudioMusicPlugin
     from core.modalities.audio_tts.plugin import AudioTTSPlugin
     from core.modalities.image_t2i.plugin import ImageT2IPlugin
     from core.modalities.image_upscale.plugin import ImageUpscalePlugin
@@ -63,6 +64,7 @@ def _wire_default_plugins() -> None:
     default_registry.register(ImageUpscalePlugin())
     default_registry.register(VideoPlugin())
     default_registry.register(AudioTTSPlugin())
+    default_registry.register(AudioMusicPlugin())
 
 
 _wire_default_plugins()

@@ -1,0 +1,82 @@
+schema_version: 1
+id: audio_music_acestep
+name: "ACE-Step 1.5 (Music)"
+description: |
+  Single-pass text-to-music via the ACE-Step 1.5 all-in-one checkpoint.
+  Drop in a comma-separated style description (genre, tempo, mood,
+  instrumentation) plus a duration in seconds and get an MP3 back.
+  ADR-0007 is the audio Modality anchor; this is the tracer-bullet
+  manifest for the audio_music Plugin (Slice 8 / issue #10).
+
+  The model checkpoint `ace_step_1.5_turbo_aio.safetensors` packages
+  the diffusion model, the ACE-Step text encoder, and the audio VAE
+  into one file (Comfy-Org repackaged variant). Place it in
+  `ComfyUI/models/checkpoints/`.
+modality: audio_music
+workflow_file: workflows/audio_music_acestep.json
+
+requires:
+  packs:
+    - comfy_extras.nodes_ace
+  checkpoints:
+    - ace_step_1.5_turbo_aio.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "3", field: "tags" }
+    ui:
+      hint: long_text
+      label: "Tags"
+      placeholder: "upbeat electronic synthwave, 120 bpm, melodic"
+      required: true
+    validation:
+      min_length: 1
+      max_length: 1000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "4", field: "tags" }
+    ui:
+      hint: long_text
+      label: "Negative tags"
+      placeholder: "harsh, distorted, low-quality"
+      required: false
+    validation:
+      max_length: 1000
+
+  - name: seconds
+    type: float
+    role: duration_seconds
+    targets:
+      - { node: "2", field: "seconds" }
+      - { node: "3", field: "duration" }
+      - { node: "4", field: "duration" }
+    ui:
+      hint: number
+      label: "Duration (seconds)"
+      default: 10
+      required: false
+      step: 1
+    validation:
+      min: 1
+      max: 240
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "5", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+outputs:
+  - role: output_audio
+    node: "7"
+    media: audio/mpeg
+
+actions: []

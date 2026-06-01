@@ -1,0 +1,106 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "ace_step_1.5_turbo_aio.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint (ACE-Step 1.5 AIO)"
+    }
+  },
+  "2": {
+    "inputs": {
+      "seconds": 10.0,
+      "batch_size": 1
+    },
+    "class_type": "EmptyAceStep1.5LatentAudio",
+    "_meta": {
+      "title": "Empty ACE-Step 1.5 Latent Audio"
+    }
+  },
+  "3": {
+    "inputs": {
+      "clip": ["1", 1],
+      "tags": "upbeat electronic synthwave, 120 bpm, melodic",
+      "lyrics": "",
+      "seed": 0,
+      "bpm": 120,
+      "duration": 10.0,
+      "timesignature": "4",
+      "language": "en",
+      "keyscale": "C major",
+      "generate_audio_codes": false,
+      "cfg_scale": 2.0,
+      "temperature": 0.85,
+      "top_p": 0.9,
+      "top_k": 0,
+      "min_p": 0.0
+    },
+    "class_type": "TextEncodeAceStepAudio1.5",
+    "_meta": {
+      "title": "Text Encode ACE-Step (positive)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "clip": ["1", 1],
+      "tags": "",
+      "lyrics": "",
+      "seed": 0,
+      "bpm": 120,
+      "duration": 10.0,
+      "timesignature": "4",
+      "language": "en",
+      "keyscale": "C major",
+      "generate_audio_codes": false,
+      "cfg_scale": 2.0,
+      "temperature": 0.85,
+      "top_p": 0.9,
+      "top_k": 0,
+      "min_p": 0.0
+    },
+    "class_type": "TextEncodeAceStepAudio1.5",
+    "_meta": {
+      "title": "Text Encode ACE-Step (negative)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "model": ["1", 0],
+      "seed": 0,
+      "steps": 8,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "positive": ["3", 0],
+      "negative": ["4", 0],
+      "latent_image": ["2", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "6": {
+    "inputs": {
+      "samples": ["5", 0],
+      "vae": ["1", 2]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode (Audio)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "audio": ["6", 0],
+      "filename_prefix": "discomfy/audio_music_acestep",
+      "quality": "V0"
+    },
+    "class_type": "SaveAudioMP3",
+    "_meta": {
+      "title": "Save Audio (MP3)"
+    }
+  }
+}
