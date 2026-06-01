@@ -1,0 +1,131 @@
+schema_version: 1
+id: qwen_image_2512
+name: "Qwen-Image 2512 (4-step Lightning)"
+description: |
+  Qwen-Image 2512 with 4-step Lightning LoRA for fast (~10s) generations on the
+  RTX 5090. Two-pass refinement workflow: 8-step KSampler -> 1.5x latent upscale
+  -> 4-step refiner KSampler -> VAE decode. The Lightning LoRA is baked into the
+  scaled UNET; user-selectable LoRAs at node 122 stack on top.
+modality: image_t2i
+workflow_file: workflows/qwen_image_2512_lora.json
+
+requires:
+  unets:
+    - qwen_image_2512_fp8_e4m3fn_scaled_comfyui_4steps_v1.0.safetensors
+  vaes:
+    - qwen_image_vae.safetensors
+  clips:
+    - qwen_2.5_vl_7b_fp8_scaled.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "18", field: "text" }
+    ui:
+      hint: long_text
+      label: "Prompt"
+      placeholder: "A minimalist masterpiece featuring..."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "17", field: "text" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: "low resolution, low quality, distorted limbs, distorted fingers, oversaturated, waxy skin, faceless, oversmooth, AI-look, chaotic composition, blurry text"
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: width
+    type: int
+    role: latent_size
+    target: { node: "59", field: "width" }
+    ui:
+      hint: number
+      label: "Width"
+      default: 1296
+      step: 64
+    validation:
+      min: 512
+      max: 2048
+      multiple_of: 8
+
+  - name: height
+    type: int
+    role: latent_size
+    target: { node: "59", field: "height" }
+    ui:
+      hint: number
+      label: "Height"
+      default: 1728
+      step: 64
+    validation:
+      min: 512
+      max: 2048
+      multiple_of: 8
+
+  - name: seed
+    type: seed
+    role: seed
+    targets:
+      - { node: "8", field: "seed" }
+      - { node: "14", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: lora
+    type: enum_dynamic
+    role: lora
+    target: { node: "122", field: "lora_name" }
+    options_from: comfyui.loras
+    ui:
+      hint: select
+      label: "LoRA"
+      default: qwen_image_2512_j0k3_lora_v1.safetensors
+      required: false
+
+  - name: lora_strength
+    type: float
+    role: lora_strength
+    target: { node: "122", field: "strength_model" }
+    ui:
+      hint: number
+      label: "LoRA strength"
+      default: 1.0
+      step: 0.1
+      required: false
+    validation:
+      min: 0.0
+      max: 2.0
+
+outputs:
+  - role: output_image
+    node: "13"
+    media: image/png
+
+actions:
+  - id: upscale
+    label: "Upscale 2x"
+    target_workflow: image_upscale_latent
+    map:
+      - { from_output: output_image, to_slot: source_image }
+  - id: animate
+    label: "Animate"
+    target_workflow: wan22_i2v
+    map:
+      - { from_output: output_image, to_slot: init_image }
+  - id: edit
+    label: "Edit"
+    target_workflow: qwen_edit_2511
+    map:
+      - { from_output: output_image, to_slot: image_1 }
