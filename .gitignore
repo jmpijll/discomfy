@@ -95,5 +95,8 @@ WIKI_SETUP.md
 # Cursor plans (live in user dir)
 .cursor/
 
+# Discovery raw data is large and regeneratable via scripts/discover_comfyui.py
+docs/v3/discovery.raw.json
+
 # Temporary merge/dev documentation
 MERGE_READY.md
