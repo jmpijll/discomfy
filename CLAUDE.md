@@ -2,6 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **v3.0 redesign in progress on the `v3.0` branch.** If you are on
+> `v3.0`, the source of truth for design and process is
+> [`AGENTS.md`](./AGENTS.md), [`CONTEXT.md`](./CONTEXT.md),
+> [`docs/v3/PRD.md`](./docs/v3/PRD.md), and the ADRs under
+> [`docs/v3/adr/`](./docs/v3/adr/). The notes below describe v2.x and
+> remain accurate for the current `main` branch only.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues on `jmpijll/discomfy`. See [`docs/agents/issue-tracker.md`](./docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Canonical mapping (`needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`) plus v3-specific extensions (`v3.0`,
+`slice`, `hitl`). See [`docs/agents/triage-labels.md`](./docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context repo. Glossary at [`CONTEXT.md`](./CONTEXT.md). ADRs at
+[`docs/v3/adr/`](./docs/v3/adr/) (move to `docs/adr/` in Slice 10).
+See [`docs/agents/domain.md`](./docs/agents/domain.md).
+
+
 ## Project Overview
 
 DisComfy is a Discord bot that integrates with ComfyUI to provide AI image and video generation capabilities. The project underwent a major v2.0 architectural refactoring in November 2025, transitioning from monolithic files to a modular architecture while maintaining 100% backward compatibility with v1.4.0. Version 2.1.0 adds ultra high-resolution support via the DyPE Flux Krea model.
