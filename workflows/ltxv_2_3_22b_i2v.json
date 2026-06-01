@@ -1,0 +1,150 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {"title": "Load LTX-Video 2.3 22B Checkpoint"},
+    "inputs": {
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {"title": "Load LTX 2.x AV Text Encoder (Gemma)"},
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it.safetensors",
+      "ckpt_name": "ltx-2.3-22b-dev-fp8.safetensors",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {"title": "Load LTX Distilled LoRA"},
+    "inputs": {
+      "model": ["1", 0],
+      "lora_name": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "strength_model": 1.0
+    }
+  },
+  "4": {
+    "class_type": "ModelSamplingLTXV",
+    "_meta": {"title": "ModelSamplingLTXV"},
+    "inputs": {
+      "model": ["3", 0],
+      "max_shift": 2.05,
+      "base_shift": 0.95
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "Positive Prompt"},
+    "inputs": {
+      "text": "",
+      "clip": ["2", 0]
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "Negative Prompt"},
+    "inputs": {
+      "text": "low quality, blurry, distorted, watermark, static, glitchy",
+      "clip": ["2", 0]
+    }
+  },
+  "8": {
+    "class_type": "LoadImage",
+    "_meta": {"title": "Load Init Image"},
+    "inputs": {
+      "image": "placeholder.png"
+    }
+  },
+  "9": {
+    "class_type": "LTXVImgToVideo",
+    "_meta": {"title": "LTXV Img To Video"},
+    "inputs": {
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "vae": ["1", 2],
+      "image": ["8", 0],
+      "width": 768,
+      "height": 512,
+      "length": 97,
+      "batch_size": 1,
+      "strength": 1.0
+    }
+  },
+  "10": {
+    "class_type": "LTXVConditioning",
+    "_meta": {"title": "LTXV Conditioning (frame_rate)"},
+    "inputs": {
+      "positive": ["9", 0],
+      "negative": ["9", 1],
+      "frame_rate": 25.0
+    }
+  },
+  "11": {
+    "class_type": "LTXVScheduler",
+    "_meta": {"title": "LTXV Scheduler"},
+    "inputs": {
+      "steps": 8,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1
+    }
+  },
+  "12": {
+    "class_type": "CFGGuider",
+    "_meta": {"title": "CFG Guider"},
+    "inputs": {
+      "model": ["4", 0],
+      "positive": ["10", 0],
+      "negative": ["10", 1],
+      "cfg": 3.0
+    }
+  },
+  "13": {
+    "class_type": "KSamplerSelect",
+    "_meta": {"title": "Sampler (euler)"},
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "14": {
+    "class_type": "RandomNoise",
+    "_meta": {"title": "RandomNoise"},
+    "inputs": {
+      "noise_seed": 0
+    }
+  },
+  "15": {
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {"title": "SamplerCustomAdvanced"},
+    "inputs": {
+      "noise": ["14", 0],
+      "guider": ["12", 0],
+      "sampler": ["13", 0],
+      "sigmas": ["11", 0],
+      "latent_image": ["9", 2]
+    }
+  },
+  "16": {
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"},
+    "inputs": {
+      "samples": ["15", 0],
+      "vae": ["1", 2]
+    }
+  },
+  "17": {
+    "class_type": "VHS_VideoCombine",
+    "_meta": {"title": "Combine to MP4"},
+    "inputs": {
+      "images": ["16", 0],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "ltxv_2_3_22b_i2v",
+      "format": "video/h264-mp4",
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

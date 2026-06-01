@@ -1,0 +1,145 @@
+schema_version: 1
+id: ltxv_2_3_22b_t2v
+name: "LTX-Video 2.3 22B (text-to-video)"
+description: |
+  LTX-Video 2.3 22B text-to-video built around the LTXV Q8 distilled LoRA
+  (384-rank) and the Gemma-12B CLIP text encoder. Pipeline:
+  CheckpointLoaderSimple loads the LTX 2.3 22B fp8 checkpoint (model + VAE);
+  LTXAVTextEncoderLoader wires up the Gemma-3-12B text encoder pinned
+  to the LTXV checkpoint (the AV loader is the LTX 2.x successor to
+  LTXVGemmaCLIPModelLoader and is what this server is provisioned for);
+  LoraLoaderModelOnly stacks the distilled 4-8-step LoRA on top of the
+  base model (the Q8 variant in `LTXVQ8LoraModelLoader` is unavailable
+  on this server because the `hadamard_transform` Python dep is not
+  installed - see SLICE_6_RUNS.md); ModelSamplingLTXV adjusts the sigma
+  range; CLIPTextEncode encodes the user's prompt. EmptyLTXVLatentVideo
+  seeds the latent;
+  LTXVScheduler builds the sigma schedule (stretched terminal=0.1);
+  SamplerCustomAdvanced + CFGGuider + KSamplerSelect(euler) + RandomNoise
+  drive the sampling; VAEDecode and VHS_VideoCombine produce the MP4.
+  This manifest is the LTX-Video sibling of wan22_i2v under the shared
+  VideoPlugin - same Modality, same Plugin, different node graph.
+modality: video
+workflow_file: workflows/ltxv_2_3_22b_t2v.json
+
+requires:
+  packs:
+    - custom_nodes.comfyui-videohelpersuite
+  checkpoints:
+    - ltx-2.3-22b-dev-fp8.safetensors
+  clips:
+    - gemma_3_12B_it.safetensors
+  loras:
+    - ltx-2.3-22b-distilled-lora-384.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "6", field: "text" }
+    ui:
+      hint: long_text
+      label: "Prompt"
+      placeholder: "a slow cinematic dolly across a foggy harbor at dawn..."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "7", field: "text" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: "low quality, blurry, distorted, watermark, static, glitchy"
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: width
+    type: int
+    role: latent_size
+    target: { node: "8", field: "width" }
+    ui:
+      hint: number
+      label: "Width"
+      default: 768
+      step: 32
+      required: false
+    validation:
+      min: 384
+      max: 1280
+      multiple_of: 32
+
+  - name: height
+    type: int
+    role: latent_size
+    target: { node: "8", field: "height" }
+    ui:
+      hint: number
+      label: "Height"
+      default: 512
+      step: 32
+      required: false
+    validation:
+      min: 384
+      max: 1280
+      multiple_of: 32
+
+  - name: frame_count
+    type: int
+    role: batch_size
+    target: { node: "8", field: "length" }
+    ui:
+      hint: number
+      label: "Frame count"
+      default: 97
+      step: 8
+      required: false
+    validation:
+      min: 9
+      max: 257
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "13", field: "noise_seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: lora
+    type: enum_dynamic
+    role: lora
+    target: { node: "3", field: "lora_name" }
+    options_from: comfyui.loras
+    ui:
+      hint: select
+      label: "LoRA"
+      default: ltx-2.3-22b-distilled-lora-384.safetensors
+      required: false
+
+  - name: lora_strength
+    type: float
+    role: lora_strength
+    target: { node: "3", field: "strength_model" }
+    ui:
+      hint: number
+      label: "LoRA strength"
+      default: 1.0
+      step: 0.1
+      required: false
+    validation:
+      min: 0.0
+      max: 2.0
+
+outputs:
+  - role: output_video
+    node: "16"
+    media: video/mp4
+
+actions: []
