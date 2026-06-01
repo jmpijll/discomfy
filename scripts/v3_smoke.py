@@ -6,14 +6,24 @@ Usage::
         --manifest qwen_image_2512 \
         --slot prompt="a single red panda eating bamboo"
 
+    # i2v with an attachment - the harness uploads the file and writes the
+    # ComfyUI-side filename into the slot value before applying:
+    python scripts/v3_smoke.py \
+        --manifest wan22_i2v \
+        --slot prompt="camera pans right" \
+        --slot init_image=output/v3_smoke/abc/img.png \
+        --slot frame_count=17
+
 Loads the manifest registry from ``workflows/manifests/``, validates the
-named manifest's ``requires`` against the live ``/object_info``, applies
-user-supplied slot overrides via the v3 ``apply_slots``, queues the
-workflow with the v3 ``ComfyHTTPClient``, follows progress with the v3
-``WSClient`` until ``ExecutionComplete``, downloads every Output the
-manifest declares via the Plugin's renderer, saves them to
-``output/v3_smoke/<prompt_id>/`` and reports prompt id, output paths,
-sizes, and wall-clock latency.
+named manifest's ``requires`` against the live ``/object_info``, uploads
+any IMAGE slot whose value is a local file path (via ``/upload/image``)
+and rewrites the value to the server-side filename, applies user-supplied
+slot overrides via the v3 ``apply_slots``, queues the workflow with the
+v3 ``ComfyHTTPClient``, follows progress with the v3 ``WSClient`` until
+``ExecutionComplete``, downloads every Output the manifest declares
+(images, videos via ``VHS_VideoCombine``'s legacy ``gifs`` bucket, or
+audio), saves them to ``output/v3_smoke/<prompt_id>/`` and reports prompt
+id, output paths, sizes, and wall-clock latency.
 
 This script is the validation gate for every v3 slice. It runs without
 Discord, exits 0 on success, non-zero on failure with a clear message.
@@ -409,11 +419,23 @@ async def _collect_outputs(
                 f"manifest '{manifest.id}' declares output on node '{spec.node}' "
                 f"but history has no outputs for that node (got: {sorted(node_outputs)})"
             )
-        bucket = _bucket_for_media(spec.media)
-        files = node_data.get(bucket, []) or []
+        buckets = _candidate_buckets_for_media(spec.media)
+        files: list[dict[str, Any]] = []
+        for bucket in buckets:
+            entries = node_data.get(bucket, []) or []
+            if entries:
+                files = entries
+                logger.info(
+                    "found %d %s entries on node '%s'",
+                    len(entries),
+                    bucket,
+                    spec.node,
+                )
+                break
         if not files:
             raise SmokeError(
-                f"node '{spec.node}' produced no {bucket} for prompt {run.prompt_id}"
+                f"node '{spec.node}' produced no {'/'.join(buckets)} for prompt "
+                f"{run.prompt_id}; node_data keys={sorted(node_data)}"
             )
         for f in files:
             filename = f.get("filename")
@@ -443,15 +465,23 @@ async def _collect_outputs(
     return collected
 
 
-def _bucket_for_media(media: str) -> str:
-    """Map a manifest MIME to the key ComfyUI history uses."""
+def _candidate_buckets_for_media(media: str) -> list[str]:
+    """Map a manifest MIME to ComfyUI history bucket keys, in priority order.
+
+    Different ComfyUI nodes use different keys for the same output kind:
+    SaveImage uses ``images``; the legacy VHS_VideoCombine custom node
+    emits MP4 / WebM under ``gifs`` (historical naming) and newer builds
+    may also expose ``videos``. We try all plausible names per Modality
+    so the smoke harness does not need to know which node authored the
+    output.
+    """
     if media.startswith("image/"):
-        return "images"
+        return ["images"]
     if media.startswith("video/"):
-        return "videos"
+        return ["videos", "gifs", "files"]
     if media.startswith("audio/"):
-        return "audio"
-    return "files"
+        return ["audio", "files"]
+    return ["files"]
 
 
 def _redact_for_log(values: dict[str, Any]) -> dict[str, Any]:

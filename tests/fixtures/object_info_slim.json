@@ -934,6 +934,60 @@
       "scale latent"
     ]
   },
+  "VHS_VideoCombine": {
+    "input": {
+      "required": {
+        "images": ["IMAGE"],
+        "frame_rate": ["FLOAT", {"default": 8, "min": 1, "step": 1}],
+        "loop_count": ["INT", {"default": 0, "min": 0, "max": 100, "step": 1}],
+        "filename_prefix": ["STRING", {"default": "AnimateDiff"}],
+        "format": [["video/h264-mp4", "video/h265-mp4", "video/webm"]],
+        "pingpong": ["BOOLEAN", {"default": false}],
+        "save_output": ["BOOLEAN", {"default": true}]
+      }
+    },
+    "is_input_list": false,
+    "output": ["VHS_FILENAMES"],
+    "output_is_list": [false],
+    "output_name": ["Filenames"],
+    "name": "VHS_VideoCombine",
+    "display_name": "Video Combine",
+    "description": "Combine images into a video.",
+    "python_module": "custom_nodes.comfyui-videohelpersuite",
+    "category": "Video Helper Suite",
+    "output_node": true,
+    "has_intermediate_output": false,
+    "search_aliases": []
+  },
+  "WanImageToVideo": {
+    "input": {
+      "required": {
+        "positive": ["CONDITIONING"],
+        "negative": ["CONDITIONING"],
+        "vae": ["VAE"],
+        "width": ["INT", {"default": 832, "min": 16, "max": 16384, "step": 16}],
+        "height": ["INT", {"default": 480, "min": 16, "max": 16384, "step": 16}],
+        "length": ["INT", {"default": 81, "min": 1, "max": 16384, "step": 4}],
+        "batch_size": ["INT", {"default": 1, "min": 1, "max": 4096}]
+      },
+      "optional": {
+        "clip_vision_output": ["CLIP_VISION_OUTPUT"],
+        "start_image": ["IMAGE"]
+      }
+    },
+    "is_input_list": false,
+    "output": ["CONDITIONING", "CONDITIONING", "LATENT"],
+    "output_is_list": [false, false, false],
+    "output_name": ["positive", "negative", "latent"],
+    "name": "WanImageToVideo",
+    "display_name": "Wan Image To Video",
+    "description": "Builds the i2v latent for WAN 2.x.",
+    "python_module": "comfy_extras.nodes_wan",
+    "category": "conditioning/video_models",
+    "output_node": false,
+    "has_intermediate_output": false,
+    "search_aliases": []
+  },
   "ModelSamplingAuraFlow": {
     "input": {
       "required": {
