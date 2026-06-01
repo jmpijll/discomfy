@@ -1,0 +1,148 @@
+schema_version: 1
+id: qwen_image_edit_2511_3images
+name: "Qwen-Image-Edit 2511 (3 images)"
+description: |
+  Qwen-Image-Edit 2511 4-step Lightning, three-image variant. Same
+  graph as the 1-image manifest plus a second and third ``LoadImage``
+  node whose pixels are fed directly to ``image2`` / ``image3`` of the
+  positive and negative ``TextEncodeQwenImageEditPlus`` nodes. The
+  first image still drives ``VAEEncode`` and therefore the KSampler's
+  latent; images 2 and 3 act purely as references for the edit
+  instruction (e.g. "subject of image 1, hat from image 2, background
+  from image 3").
+modality: image_edit
+workflow_file: workflows/qwen_image_edit_2511_3images.json
+
+requires:
+  unets:
+    - qwen_image_edit_2511_fp8mixed.safetensors
+  vaes:
+    - qwen_image_vae.safetensors
+  clips:
+    - qwen_2.5_vl_7b_fp8_scaled.safetensors
+  loras:
+    - Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors
+    - QWEN_EDIT_ACTION_V1.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "12", field: "prompt" }
+    ui:
+      hint: long_text
+      label: "Edit instruction"
+      placeholder: "Subject from image 1, attire from image 2, scene from image 3"
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "11", field: "prompt" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: ""
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: image_1
+    type: image
+    role: source_image
+    target: { node: "8", field: "image" }
+    ui:
+      hint: image
+      label: "Source image 1 (primary)"
+      attachment_position: 1
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: image_2
+    type: image
+    role: source_image_2
+    target: { node: "16", field: "image" }
+    ui:
+      hint: image
+      label: "Source image 2 (reference)"
+      attachment_position: 2
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: image_3
+    type: image
+    role: source_image_3
+    target: { node: "17", field: "image" }
+    ui:
+      hint: image
+      label: "Source image 3 (reference)"
+      attachment_position: 3
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "13", field: "seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: lora
+    type: enum_dynamic
+    role: lora
+    target: { node: "5", field: "lora_name" }
+    options_from: comfyui.loras
+    ui:
+      hint: select
+      label: "User LoRA"
+      default: QWEN_EDIT_ACTION_V1.safetensors
+      required: false
+
+  - name: lora_strength
+    type: float
+    role: lora_strength
+    target: { node: "5", field: "strength_model" }
+    ui:
+      hint: number
+      label: "User LoRA strength"
+      default: 0.0
+      step: 0.1
+      required: false
+    validation:
+      min: 0.0
+      max: 2.0
+
+outputs:
+  - role: output_image
+    node: "15"
+    media: image/png
+
+actions:
+  - id: upscale
+    label: "Upscale 2x"
+    target_workflow: image_upscale_latent
+    map:
+      - { from_output: output_image, to_slot: source_image }
+  - id: animate
+    label: "Animate"
+    target_workflow: wan22_i2v
+    map:
+      - { from_output: output_image, to_slot: init_image }

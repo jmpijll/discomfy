@@ -55,12 +55,14 @@ def _wire_default_plugins() -> None:
     this function.
     """
     from core.modalities.audio_tts.plugin import AudioTTSPlugin
+    from core.modalities.image_edit.plugin import ImageEditPlugin
     from core.modalities.image_t2i.plugin import ImageT2IPlugin
     from core.modalities.image_upscale.plugin import ImageUpscalePlugin
     from core.modalities.video.plugin import VideoPlugin
 
     default_registry.register(ImageT2IPlugin())
     default_registry.register(ImageUpscalePlugin())
+    default_registry.register(ImageEditPlugin())
     default_registry.register(VideoPlugin())
     default_registry.register(AudioTTSPlugin())
 

@@ -17,12 +17,14 @@ from core.modalities.base import (
     SlotValueValidationError,
     SlotValues,
 )
+from core.modalities.image_edit.plugin import ImageEditPlugin
 from core.modalities.image_t2i.plugin import ImageT2IPlugin
 from core.modalities.image_upscale.plugin import ImageUpscalePlugin
 from core.modalities.registry import ModalityRegistry, default_registry
 
 __all__ = [
     "AudioTTSPlugin",
+    "ImageEditPlugin",
     "ImageT2IPlugin",
     "ImageUpscalePlugin",
     "ModalityPlugin",
