@@ -1,0 +1,148 @@
+schema_version: 1
+id: ltxv_2_3_22b_i2v
+name: "LTX-Video 2.3 22B (image-to-video)"
+description: |
+  LTX-Video 2.3 22B image-to-video. Same loaders as the t2v sibling
+  (CheckpointLoaderSimple + LTXAVTextEncoderLoader + LoraLoaderModelOnly
+  + ModelSamplingLTXV), but LTXVImgToVideo replaces EmptyLTXVLatentVideo
+  and conditions the latent on a user-supplied first frame. The sampling
+  chain is otherwise identical: LTXVScheduler -> CFGGuider + KSamplerSelect
+  + RandomNoise -> SamplerCustomAdvanced -> VAEDecode -> VHS_VideoCombine.
+  Wired up as a chained Action target from qwen_image_2512 so a finished
+  Qwen image can be animated end-to-end.
+modality: video
+workflow_file: workflows/ltxv_2_3_22b_i2v.json
+
+requires:
+  packs:
+    - custom_nodes.comfyui-videohelpersuite
+  checkpoints:
+    - ltx-2.3-22b-dev-fp8.safetensors
+  clips:
+    - gemma_3_12B_it.safetensors
+  loras:
+    - ltx-2.3-22b-distilled-lora-384.safetensors
+
+slots:
+  - name: prompt
+    type: text
+    role: prompt_positive
+    target: { node: "6", field: "text" }
+    ui:
+      hint: long_text
+      label: "Prompt"
+      placeholder: "the subject slowly turns toward the camera, soft breeze..."
+      required: true
+    validation:
+      min_length: 1
+      max_length: 2000
+
+  - name: negative_prompt
+    type: text
+    role: prompt_negative
+    target: { node: "7", field: "text" }
+    ui:
+      hint: long_text
+      label: "Negative prompt"
+      default: "low quality, blurry, distorted, watermark, static, glitchy"
+      required: false
+    validation:
+      max_length: 2000
+
+  - name: init_image
+    type: image
+    role: init_image
+    target: { node: "8", field: "image" }
+    ui:
+      hint: image
+      label: "Source image"
+      required: true
+      attachment_position: 1
+    validation:
+      accepts: [image/png, image/jpeg, image/webp]
+
+  - name: width
+    type: int
+    role: latent_size
+    target: { node: "9", field: "width" }
+    ui:
+      hint: number
+      label: "Width"
+      default: 768
+      step: 32
+      required: false
+    validation:
+      min: 384
+      max: 1280
+      multiple_of: 32
+
+  - name: height
+    type: int
+    role: latent_size
+    target: { node: "9", field: "height" }
+    ui:
+      hint: number
+      label: "Height"
+      default: 512
+      step: 32
+      required: false
+    validation:
+      min: 384
+      max: 1280
+      multiple_of: 32
+
+  - name: frame_count
+    type: int
+    role: batch_size
+    target: { node: "9", field: "length" }
+    ui:
+      hint: number
+      label: "Frame count"
+      default: 97
+      step: 8
+      required: false
+    validation:
+      min: 9
+      max: 257
+
+  - name: seed
+    type: seed
+    role: seed
+    target: { node: "14", field: "noise_seed" }
+    ui:
+      hint: seed
+      label: "Seed"
+      default: random
+      required: false
+
+  - name: lora
+    type: enum_dynamic
+    role: lora
+    target: { node: "3", field: "lora_name" }
+    options_from: comfyui.loras
+    ui:
+      hint: select
+      label: "LoRA"
+      default: ltx-2.3-22b-distilled-lora-384.safetensors
+      required: false
+
+  - name: lora_strength
+    type: float
+    role: lora_strength
+    target: { node: "3", field: "strength_model" }
+    ui:
+      hint: number
+      label: "LoRA strength"
+      default: 1.0
+      step: 0.1
+      required: false
+    validation:
+      min: 0.0
+      max: 2.0
+
+outputs:
+  - role: output_video
+    node: "17"
+    media: video/mp4
+
+actions: []

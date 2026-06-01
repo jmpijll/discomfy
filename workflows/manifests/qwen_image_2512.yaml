@@ -124,6 +124,11 @@ actions:
     target_workflow: wan22_i2v
     map:
       - { from_output: output_image, to_slot: init_image }
+  - id: animate_ltx
+    label: "Animate (LTX-Video 2.3)"
+    target_workflow: ltxv_2_3_22b_i2v
+    map:
+      - { from_output: output_image, to_slot: init_image }
   - id: edit
     label: "Edit"
     target_workflow: qwen_edit_2511
