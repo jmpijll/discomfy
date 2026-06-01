@@ -3,12 +3,14 @@ id: flux2_klein
 name: "FLUX 2 Klein 9B"
 description: |
   FLUX 2 Klein 9B with the Klein-consistency LoRA available as an optional
-  style overlay. DualCLIPLoader pairs Gemma-3 12B with Mistral-3 small (FP8)
-  per the FLUX 2 reference recipe; the model decodes through `flux2-vae`.
-  Sampling defaults to 20-step Euler/simple with `cfg=1.0` for distilled
-  FLUX behaviour. A second UNET (`darkBeastMar2126Latest_dbkleinv2BFS`)
-  is exposed via the `unet` static select so operators can swap the
-  community variant in without authoring a second manifest.
+  style overlay. Text conditioning is produced by a single `CLIPLoader`
+  with type=`flux2` consuming `qwen_3_8b_fp8mixed.safetensors` (Qwen-3 8B
+  is the encoder paired with the 9B Klein UNET on ComfyUI 0.21+); the
+  model decodes through `flux2-vae`. Sampling defaults to 20-step
+  Euler/simple with `cfg=1.0` for distilled FLUX behaviour. A second
+  UNET (`darkBeastMar2126Latest_dbkleinv2BFS`) is exposed via the
+  `unet` static select so operators can swap the community variant in
+  without authoring a second manifest.
 
   This is the second `image_t2i` manifest in v3.0 (alongside
   `qwen_image_2512`). Together they prove the v3 Modality Registry can
@@ -23,8 +25,7 @@ requires:
   vaes:
     - flux2-vae.safetensors
   clips:
-    - gemma_3_12B_it.safetensors
-    - mistral_3_small_flux2_fp8.safetensors
+    - qwen_3_8b_fp8mixed.safetensors
 
 slots:
   - name: prompt

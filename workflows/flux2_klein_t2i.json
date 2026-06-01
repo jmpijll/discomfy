@@ -11,13 +11,12 @@
   },
   "2": {
     "inputs": {
-      "clip_name1": "gemma_3_12B_it.safetensors",
-      "clip_name2": "mistral_3_small_flux2_fp8.safetensors",
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
       "type": "flux2"
     },
-    "class_type": "DualCLIPLoader",
+    "class_type": "CLIPLoader",
     "_meta": {
-      "title": "DualCLIPLoader (Gemma + Mistral, FLUX 2)"
+      "title": "Load CLIP (Qwen-3 8B fp8mixed, type=flux2)"
     }
   },
   "3": {
