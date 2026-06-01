@@ -55,8 +55,10 @@ def _wire_default_plugins() -> None:
     this function.
     """
     from core.modalities.image_t2i.plugin import ImageT2IPlugin
+    from core.modalities.image_upscale.plugin import ImageUpscalePlugin
 
     default_registry.register(ImageT2IPlugin())
+    default_registry.register(ImageUpscalePlugin())
 
 
 _wire_default_plugins()

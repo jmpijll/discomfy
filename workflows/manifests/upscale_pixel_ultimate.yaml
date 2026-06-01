@@ -1,0 +1,70 @@
+schema_version: 1
+id: image_upscale_pixel_ultimate
+name: "Upscale (pixel, model-based)"
+description: |
+  Pixel-space upscale using a user-installed ESRGAN-style ``.pth`` model.
+  ``ImageUpscaleWithModel`` runs at the model's native scale (typically
+  4x) and ``ImageScaleBy`` re-scales the output to the user's chosen
+  factor (default 0.5 = net 2x when paired with a 4x model).
+
+  Conditional registration: this manifest declares
+  ``4x_foolhardy_Remacri.pth`` in ``requires.upscale_models``; if the
+  operator has not installed it (or any upscale model), the manifest
+  fails ``Inventory.validate_requires`` and the bot disables it with a
+  logged warning. Replace the file under ``ComfyUI/models/upscale_models``
+  and restart the bot to enable it - no code change required (ADR-0001).
+modality: image_upscale
+workflow_file: workflows/upscale_pixel_ultimate.json
+
+requires:
+  upscale_models:
+    - 4x_foolhardy_Remacri.pth
+
+slots:
+  - name: source_image
+    type: image
+    role: source_image
+    target: { node: "1", field: "image" }
+    ui:
+      hint: image
+      label: "Source image"
+      attachment_position: 1
+      required: true
+    validation:
+      accepts:
+        - image/png
+        - image/jpeg
+        - image/webp
+
+  - name: upscale_model
+    type: enum_dynamic
+    role: model
+    target: { node: "2", field: "model_name" }
+    options_from: comfyui.upscale_models
+    ui:
+      hint: select
+      label: "Upscale model"
+      default: 4x_foolhardy_Remacri.pth
+      required: true
+
+  - name: scale_by
+    type: float
+    role: scale_by
+    target: { node: "4", field: "scale_by" }
+    ui:
+      hint: number
+      label: "Post-model rescale"
+      placeholder: "0.5 = net 2x with a 4x model"
+      default: 0.5
+      step: 0.25
+      required: false
+    validation:
+      min: 0.25
+      max: 2.0
+
+outputs:
+  - role: output_image
+    node: "5"
+    media: image/png
+
+actions: []

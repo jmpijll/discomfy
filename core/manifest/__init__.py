@@ -8,7 +8,12 @@ See `docs/v3/adr/0001-workflow-manifest-format.md` for the full
 specification.
 """
 
-from core.manifest.applier import apply_slots
+from core.manifest.applier import (
+    ActionMappingError,
+    SlotApplyError,
+    apply_action_mapping,
+    apply_slots,
+)
 from core.manifest.loader import (
     ManifestLoadError,
     load_manifest,
@@ -32,6 +37,7 @@ from core.manifest.schema import (
 __all__ = [
     "Action",
     "ActionMap",
+    "ActionMappingError",
     "Manifest",
     "ManifestLoadError",
     "Modality",
@@ -39,11 +45,13 @@ __all__ = [
     "Requires",
     "Role",
     "Slot",
+    "SlotApplyError",
     "SlotType",
     "SlotUI",
     "SlotValidation",
     "Target",
     "UIHint",
+    "apply_action_mapping",
     "apply_slots",
     "load_manifest",
     "load_manifest_directory",

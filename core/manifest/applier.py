@@ -9,13 +9,20 @@ the workflow dict and writes each Slot's value to its manifest-declared
 from __future__ import annotations
 
 import copy
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Iterable, Mapping
 
-from core.manifest.schema import Manifest
+from core.manifest.schema import Action, Manifest
+
+if TYPE_CHECKING:
+    from core.run import Output
 
 
 class SlotApplyError(ValueError):
     """A slot value could not be applied to the workflow."""
+
+
+class ActionMappingError(ValueError):
+    """An Action's source-output -> target-slot map could not be resolved."""
 
 
 def apply_slots(
@@ -67,4 +74,42 @@ def apply_slots(
     return out
 
 
-__all__ = ["SlotApplyError", "apply_slots"]
+def apply_action_mapping(
+    action: Action,
+    outputs: Iterable["Output"],
+) -> dict[str, Any]:
+    """Build target-Manifest SlotValues from a finished Run's Outputs.
+
+    For each :class:`~core.manifest.schema.ActionMap` entry in ``action``,
+    find the first Output whose ``role`` matches ``map.from_output`` and
+    copy its ComfyUI input-side filename (``output.filename``) into the
+    target slot named ``map.to_slot``.
+
+    The returned dict is shaped for
+    :meth:`core.modalities.base.ModalityPlugin.validate_slot_values` of
+    the *target* Manifest. Action chains are pure data per ADR-0001 -
+    this function performs no validation against the target Manifest
+    (the Plugin layer does that after).
+
+    Raises:
+        ActionMappingError: if any ``from_output`` role has no Output.
+    """
+    outputs_list = list(outputs)
+    result: dict[str, Any] = {}
+    for entry in action.map:
+        matches = [o for o in outputs_list if o.role == entry.from_output]
+        if not matches:
+            raise ActionMappingError(
+                f"action '{action.id}': no Output with role "
+                f"'{entry.from_output.value}' to feed slot '{entry.to_slot}'"
+            )
+        result[entry.to_slot] = matches[0].filename
+    return result
+
+
+__all__ = [
+    "ActionMappingError",
+    "SlotApplyError",
+    "apply_action_mapping",
+    "apply_slots",
+]

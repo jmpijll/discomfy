@@ -56,6 +56,7 @@ class Role(str, Enum):
     DURATION_SECONDS = "duration_seconds"
     DYPE_EXPONENT = "dype_exponent"
     BATCH_SIZE = "batch_size"
+    SCALE_BY = "scale_by"
     OUTPUT_IMAGE = "output_image"
     OUTPUT_VIDEO = "output_video"
     OUTPUT_AUDIO = "output_audio"
